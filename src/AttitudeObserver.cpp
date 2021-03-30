@@ -151,7 +151,10 @@ bool AttitudeObserver::run(const mc_control::MCController & ctl)
 void AttitudeObserver::update(mc_control::MCController & ctl)
 {
   auto & sensor = ctl.robot(robot_).bodySensor(updateSensor_);
-  sensor.orientation(Eigen::Quaterniond{m_orientation.transpose()});
+  auto & realSensor = ctl.realRobot(robot_).bodySensor(updateSensor_);
+  Eigen::Quaterniond quat(m_orientation.transpose());
+  sensor.orientation(quat);
+  realSensor.orientation(quat);
 }
 
 void AttitudeObserver::addToLogger(const mc_control::MCController &,
