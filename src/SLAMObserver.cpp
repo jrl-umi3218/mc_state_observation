@@ -66,7 +66,7 @@ void SLAMObserver::configure(const mc_control::MCController & ctl, const mc_rtc:
   }
   else
   {
-    mc_rtc::log::error_and_throw<std::runtime_error>("[{}}] Robot configuration is mandatory.", name());
+    mc_rtc::log::error_and_throw<std::runtime_error>("[{}] Robot configuration is mandatory.", name());
   }
 
   if(config.has("SLAM"))
