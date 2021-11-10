@@ -1,10 +1,10 @@
-#include <mc_state_observation/SLAMObserver2.h>
 #include <mc_observers/ObserverMacros.h>
 #include <mc_rtc/version.h>
 #include <SpaceVecAlg/Conversions.h>
+#include <mc_state_observation/SLAMObserver2.h>
 
-#include <tf2_eigen/tf2_eigen.h>
 #include <mc_rtc/ros.h>
+#include <tf2_eigen/tf2_eigen.h>
 #include <Eigen/src/Geometry/Transform.h>
 
 namespace mc_state_observation
@@ -13,8 +13,11 @@ namespace mc_state_observation
 namespace
 {
 
-bool getTransformStamped(tf2_ros::Buffer & tfBuffer, const std::string & origin, const std::string & to,
-  geometry_msgs::TransformStamped & transformStamped, std::string & error)
+bool getTransformStamped(tf2_ros::Buffer & tfBuffer,
+                         const std::string & origin,
+                         const std::string & to,
+                         geometry_msgs::TransformStamped & transformStamped,
+                         std::string & error)
 {
   try
   {
@@ -28,12 +31,9 @@ bool getTransformStamped(tf2_ros::Buffer & tfBuffer, const std::string & origin,
   return true;
 }
 
-}
+} // namespace
 
-SLAMObserver2::SLAMObserver2(const std::string & type, double dt)
-: VisionBasedObserver(type, dt)
-{
-}
+SLAMObserver2::SLAMObserver2(const std::string & type, double dt) : VisionBasedObserver(type, dt) {}
 
 void SLAMObserver2::configure(const mc_control::MCController & ctl, const mc_rtc::Configuration & config)
 {
@@ -68,7 +68,8 @@ void SLAMObserver2::configure(const mc_control::MCController & ctl, const mc_rtc
     }
   }
 
-  desc_ = fmt::format("{} (Camera: {}, Estimated: {}, ExtraRobots: {})", name(), camera_, estimated_, fmt::join(extraRobotsName_, ", "));
+  desc_ = fmt::format("{} (Camera: {}, Estimated: {}, ExtraRobots: {})", name(), camera_, estimated_,
+                      fmt::join(extraRobotsName_, ", "));
 
   thread_ = std::thread(std::bind(&SLAMObserver2::rosSpinner, this));
 }
@@ -91,7 +92,8 @@ bool SLAMObserver2::run(const mc_control::MCController & ctl)
       return false;
     }
 
-    const sva::PTransformd X_Slam_Estimated_Camera = sva::conversions::fromHomogeneous(tf2::transformToEigen(transformStamped).matrix());
+    const sva::PTransformd X_Slam_Estimated_Camera =
+        sva::conversions::fromHomogeneous(tf2::transformToEigen(transformStamped).matrix());
 
     // Connect SLAM and Robot map, just for visual purpose
     const sva::PTransformd X_0_S = X_Slam_Estimated_Camera.inv() * ctl.realRobot(robot_).bodyPosW(camera_);
@@ -151,25 +153,29 @@ void SLAMObserver2::update(mc_control::MCController & ctl)
     auto & main_robot = robots_.robot();
 
     main_robot.mbc().q = q();
-    const sva::PTransformd robot_posW = freeflyer() * camera().inv() * (isFiltered_ ? estimatedPoseFiltered_ : estimatedPose_);
+    const sva::PTransformd robot_posW =
+        freeflyer() * camera().inv() * (isFiltered_ ? estimatedPoseFiltered_ : estimatedPose_);
     main_robot.posW(robot_posW);
 
-    for(auto & robot: robots_)
+    for(auto & robot : robots_)
     {
       robot.posW(ctl.realRobot(robot.name()).posW() * ctl.realRobot().posW().inv() * main_robot.posW());
-      mc_rtc::ROSBridge::update_robot_publisher("SLAM_"+robot.name(), ctl.timeStep, robot);
+      mc_rtc::ROSBridge::update_robot_publisher("SLAM_" + robot.name(), ctl.timeStep, robot);
     }
   }
 }
 
-void SLAMObserver2::addToLogger(const mc_control::MCController & ctl, mc_rtc::Logger & logger, const std::string & category)
+void SLAMObserver2::addToLogger(const mc_control::MCController & ctl,
+                                mc_rtc::Logger & logger,
+                                const std::string & category)
 {
   VisionBasedObserver::addToLogger(ctl, logger, category);
   logger.addLogEntry(category + "_LeftFootCenter", [this]() { return robots_.robot().surfacePose("LeftFootCenter"); });
-  logger.addLogEntry(category + "_RightFootCenter", [this]() { return robots_.robot().surfacePose("RightFootCenter"); });
+  logger.addLogEntry(category + "_RightFootCenter",
+                     [this]() { return robots_.robot().surfacePose("RightFootCenter"); });
   logger.addLogEntry(category + "_com", [this]() { return robots_.robot().com(); });
 
-  for(auto & robot: robots_)
+  for(auto & robot : robots_)
   {
     const std::string & name = robot.name();
     logger.addLogEntry(category + "_posW_" + name, [this, name]() { return robots_.robot(name).posW(); });
@@ -183,32 +189,27 @@ void SLAMObserver2::removeFromLogger(mc_rtc::Logger & logger, const std::string 
   logger.removeLogEntry(category + "_RightFootCenter");
   logger.removeLogEntry(category + "_com");
 
-  for(auto & robot: robots_)
+  for(auto & robot : robots_)
   {
     logger.removeLogEntry(category + "_posW_" + robot.name());
   }
 }
 
 void SLAMObserver2::addToGUI(const mc_control::MCController & ctl,
-                            mc_rtc::gui::StateBuilder & gui,
-                            const std::vector<std::string> & category)
+                             mc_rtc::gui::StateBuilder & gui,
+                             const std::vector<std::string> & category)
 {
   VisionBasedObserver::addToGUI(ctl, gui, category);
 
   using namespace mc_rtc::gui;
 
   gui.addElement(category, Transform("X_S_Ground", [this]() { return X_Slam_Ground_.pose; }),
-                 Button("Initialize",
-                        [this, &ctl]() {
-                          triggerInitialization_ = true;
-                        }),
-                 ArrayLabel("X_Slam_Camera", {"r", "p", "y", "x", "y", "z"},
-                            [this]() {
-                              Eigen::VectorXd ret(6);
-                              ret << mc_rbdyn::rpyFromMat(pose_.pose.rotation()), pose_.pose.translation();
-                              return ret;
-                            })
-  );
+                 Button("Initialize", [this, &ctl]() { triggerInitialization_ = true; }),
+                 ArrayLabel("X_Slam_Camera", {"r", "p", "y", "x", "y", "z"}, [this]() {
+                   Eigen::VectorXd ret(6);
+                   ret << mc_rbdyn::rpyFromMat(pose_.pose.rotation()), pose_.pose.translation();
+                   return ret;
+                 }));
 }
 
 } // namespace mc_state_observation

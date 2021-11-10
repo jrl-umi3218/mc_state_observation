@@ -1,20 +1,17 @@
 
-#include <mc_state_observation/ObjectObserver2.h>
 #include <mc_observers/ObserverMacros.h>
 #include <mc_rtc/version.h>
 #include <SpaceVecAlg/Conversions.h>
+#include <mc_state_observation/ObjectObserver2.h>
 
-#include <tf2_eigen/tf2_eigen.h>
 #include <mc_rtc/ros.h>
+#include <tf2_eigen/tf2_eigen.h>
 #include <Eigen/src/Geometry/Transform.h>
 
 namespace mc_state_observation
 {
 
-ObjectObserver2::ObjectObserver2(const std::string & type, double dt)
-: VisionBasedObserver(type, dt)
-{
-}
+ObjectObserver2::ObjectObserver2(const std::string & type, double dt) : VisionBasedObserver(type, dt) {}
 
 void ObjectObserver2::configure(const mc_control::MCController & ctl, const mc_rtc::Configuration & config)
 {
@@ -72,8 +69,8 @@ void ObjectObserver2::update(mc_control::MCController & ctl)
 }
 
 void ObjectObserver2::addToLogger(const mc_control::MCController & ctl,
-                                 mc_rtc::Logger & logger,
-                                 const std::string & category)
+                                  mc_rtc::Logger & logger,
+                                  const std::string & category)
 {
   std::string _category = category;
   _category += "_" + object_;
@@ -99,16 +96,14 @@ void ObjectObserver2::removeFromLogger(mc_rtc::Logger & logger, const std::strin
 }
 
 void ObjectObserver2::addToGUI(const mc_control::MCController & ctl,
-                              mc_rtc::gui::StateBuilder & gui,
-                              const std::vector<std::string> & category)
+                               mc_rtc::gui::StateBuilder & gui,
+                               const std::vector<std::string> & category)
 {
   VisionBasedObserver::addToGUI(ctl, gui, category);
 
   using namespace mc_rtc::gui;
 
-  gui.addElement(category,
-    Transform("realPose_" + object_, [this, &ctl]() { return ctl.realRobot(object_).posW(); })
-  );
+  gui.addElement(category, Transform("realPose_" + object_, [this, &ctl]() { return ctl.realRobot(object_).posW(); }));
 }
 
 void ObjectObserver2::callback(const geometry_msgs::PoseStamped & msg)
@@ -118,8 +113,8 @@ void ObjectObserver2::callback(const geometry_msgs::PoseStamped & msg)
   const sva::PTransformd pose = sva::conversions::fromHomogeneous(affine.matrix());
   const sva::MotionVecd error = sva::transformError(pose, poseFromTopic_.pose);
   const std::lock_guard<std::mutex> lock(mutex_);
-  if((poseFromTopic_.pose == sva::PTransformd::Identity()) ||
-      (poseFromTopic_.pose != sva::PTransformd::Identity() && error.vector().norm() < 0.5))
+  if((poseFromTopic_.pose == sva::PTransformd::Identity())
+     || (poseFromTopic_.pose != sva::PTransformd::Identity() && error.vector().norm() < 0.5))
   {
     poseFromTopic_ = {pose, msg.header.stamp.toSec()};
     isNewEstimatedPose_ = true;
