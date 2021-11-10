@@ -10,8 +10,16 @@ macro(add_so_observer observer_name)
 endmacro()
 
 macro(add_observer_with_filter observer_name)
+  find_package(gram_savitzky_golay REQUIRED)
   add_observer(${observer_name} "${observer_name}.cpp;filtering.cpp" "${CMAKE_SOURCE_DIR}/include/${PROJECT_NAME}/${observer_name}.h;${CMAKE_SOURCE_DIR}/include/${PROJECT_NAME}/filtering.h")
-  target_link_libraries(${observer_name} PUBLIC mc_rtc::mc_control)
+  target_link_libraries(${observer_name} PUBLIC mc_rtc::mc_control gram_savitzky_golay::gram_savitzky_golay)
+endmacro()
+
+macro(add_vision_based_observer observer_name)
+  find_package(gram_savitzky_golay REQUIRED)
+  add_observer(${observer_name} "${observer_name}.cpp;filtering.cpp;VisionBasedObserver.cpp" "${CMAKE_SOURCE_DIR}/include/${PROJECT_NAME}/${observer_name}.h;${CMAKE_SOURCE_DIR}/include/${PROJECT_NAME}/filtering.h;${CMAKE_SOURCE_DIR}/include/${PROJECT_NAME}/VisionBasedObserver.h")
+  target_link_libraries(${observer_name} PUBLIC mc_rtc::mc_control mc_state_observation::ROS mc_rtc::mc_rtc_ros gram_savitzky_golay::gram_savitzky_golay)
+  set_target_properties(${observer_name} PROPERTIES INSTALL_RPATH ${MC_OBSERVERS_RUNTIME_INSTALL_PREFIX})
 endmacro()
 
 add_so_observer(AttitudeObserver)
@@ -27,9 +35,8 @@ if(${ROSCPP_FOUND})
 endif()
 
 if(${ROSCPP_FOUND})
-  find_package(gram_savitzky_golay REQUIRED)
   add_observer_with_filter(SLAMObserver)
-  target_link_libraries(SLAMObserver PUBLIC mc_rtc::mc_control mc_state_observation::ROS mc_rtc::mc_rtc_ros gram_savitzky_golay::gram_savitzky_golay)
+  target_link_libraries(SLAMObserver PUBLIC mc_rtc::mc_control mc_state_observation::ROS mc_rtc::mc_rtc_ros)
   set_target_properties(SLAMObserver PROPERTIES INSTALL_RPATH ${MC_OBSERVERS_RUNTIME_INSTALL_PREFIX})
 endif()
 
@@ -37,6 +44,11 @@ if(${ROSCPP_FOUND})
   add_simple_observer(ObjectObserver)
   target_link_libraries(ObjectObserver PUBLIC mc_rtc::mc_control mc_state_observation::ROS mc_rtc::mc_rtc_ros)
   set_target_properties(ObjectObserver PROPERTIES INSTALL_RPATH ${MC_OBSERVERS_RUNTIME_INSTALL_PREFIX})
+endif()
+
+if(${ROSCPP_FOUND})
+  add_vision_based_observer(ObjectObserver2)
+  add_vision_based_observer(SLAMObserver2)
 endif()
 
 install(DIRECTORY ${CMAKE_SOURCE_DIR}/include/${PROJECT_NAME}
