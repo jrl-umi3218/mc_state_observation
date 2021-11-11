@@ -110,11 +110,23 @@ bool SLAMObserver2::run(const mc_control::MCController & ctl)
   geometry_msgs::TransformStamped transformStamped;
   if(!getTransformStamped(tfBuffer_, "robot_map", estimated_, transformStamped, error_))
   {
+    if(isEstimatorAlive_)
+    {
+      const_cast<mc_control::MCController &>(ctl).datastore().remove("SLAM::Robot");
+      const_cast<mc_control::MCController &>(ctl).datastore().remove("SLAM::X_S_Ground");
+    }
     isEstimatorAlive_ = false;
     return false;
   }
+  else if(!isEstimatorAlive_)
+  {
+    isEstimatorAlive_ = true;
 
-  isEstimatorAlive_ = true;
+    const_cast<mc_control::MCController &>(ctl).datastore().make_call(
+        "SLAM::Robot", [this]() -> const mc_rbdyn::Robot & { return robots_.robot(); });
+    const_cast<mc_control::MCController &>(ctl).datastore().make_call(
+        "SLAM::X_S_Ground", [this]() -> const sva::PTransformd & { return X_Slam_Ground_.pose; });
+  }
 
   isNewEstimatedPose_ = false;
   const sva::PTransformd pose = sva::conversions::fromHomogeneous(tf2::transformToEigen(transformStamped).matrix());
