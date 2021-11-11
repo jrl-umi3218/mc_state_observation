@@ -157,13 +157,8 @@ void SLAMObserver2::update(mc_control::MCController & ctl)
   if(isNewEstimatedPose_)
   {
     isNewEstimatedPose_ = false;
-    // if(ctl.datastore().has("SLAM::Robot"))
-    // {
-    //   ctl.datastore().remove("SLAM::Robot");
-    // }
 
     auto & main_robot = robots_.robot();
-
     main_robot.mbc().q = q();
     const sva::PTransformd robot_posW =
         freeflyer() * camera().inv() * (isFiltered_ ? estimatedPoseFiltered_ : estimatedPose_);
