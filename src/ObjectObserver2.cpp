@@ -61,9 +61,8 @@ void ObjectObserver2::update(mc_control::MCController & ctl)
     if(isNewEstimatedPose_)
     {
       isNewEstimatedPose_ = false;
-      local_ = (isFiltered_ ? estimatedPoseFiltered_ : estimatedPose_) * camera();
       truePose_ = (isFiltered_ ? estimatedPoseFiltered_ : estimatedPose_) * trueCameraPose_.pose;
-      // ctl.realRobot(object_).posW((isFiltered ? estimatedPoseFiltered_ : estimatedPose_));
+      ctl.realRobot(object_).posW((isFiltered_ ? estimatedPoseFiltered_ : estimatedPose_) * camera());
     }
   }
 }
@@ -77,8 +76,7 @@ void ObjectObserver2::addToLogger(const mc_control::MCController & ctl,
   VisionBasedObserver::addToLogger(ctl, logger, _category);
 
   logger.addLogEntry(_category + "_posW_control", [this, &ctl]() { return ctl.robot(object_).posW(); });
-  // logger.addLogEntry(_category + "_realPosW", [this, &ctl]() { return ctl.realRobot(object_).posW(); });
-  logger.addLogEntry(_category + "_posW_real", [this, &ctl]() { return local_; });
+  logger.addLogEntry(_category + "_posW_real", [this, &ctl]() { return ctl.realRobot(object_).posW(); });
   logger.addLogEntry(_category + "_truePose", [this, &ctl]() { return truePose_; });
   logger.addLogEntry(_category + "_trueCamera", [this, &ctl]() { return trueCameraPose_.pose; });
 }

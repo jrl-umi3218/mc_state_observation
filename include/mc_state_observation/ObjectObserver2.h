@@ -60,7 +60,6 @@ protected:
   /// @}
 
   // Should be deleted in "production"
-  sva::PTransformd local_ = sva::PTransformd::Identity();
   sva::PTransformdStamped trueCameraPose_ = {sva::PTransformd::Identity(), 0.0};
   sva::PTransformd truePose_ = sva::PTransformd::Identity();
 
