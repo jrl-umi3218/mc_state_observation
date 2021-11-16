@@ -114,6 +114,14 @@ bool SLAMObserver2::run(const mc_control::MCController & ctl)
     {
       const_cast<mc_control::MCController &>(ctl).datastore().remove("SLAM::Robot");
       const_cast<mc_control::MCController &>(ctl).datastore().remove("SLAM::X_S_Ground");
+
+      for(size_t i = 0; i < robots_.robots().size(); ++i)
+      {
+        if(i != robots_.robotIndex())
+        {
+          const_cast<mc_control::MCController &>(ctl).datastore().remove(robots_.robots()[i].name()+"::X_S_Object");
+        }
+      }
     }
     isEstimatorAlive_ = false;
     return false;
@@ -126,6 +134,15 @@ bool SLAMObserver2::run(const mc_control::MCController & ctl)
         "SLAM::Robot", [this]() -> const mc_rbdyn::Robot & { return robots_.robot(); });
     const_cast<mc_control::MCController &>(ctl).datastore().make_call(
         "SLAM::X_S_Ground", [this]() -> const sva::PTransformd & { return X_Slam_Ground_.pose; });
+
+    for(size_t i = 0; i < robots_.robots().size(); ++i)
+    {
+      if(i != robots_.robotIndex())
+      {
+        const_cast<mc_control::MCController &>(ctl).datastore().make_call(
+          robots_.robots()[i].name()+"::X_S_Object", [this, i]() -> const sva::PTransformd & { return robots_.robots()[i].posW(); });
+      }
+    }
   }
 
   isNewEstimatedPose_ = false;
