@@ -30,6 +30,15 @@ void ObjectObserver2::configure(const mc_control::MCController & ctl, const mc_r
   subscriber_ = nh_->subscribe(topic_, 1, &ObjectObserver2::callback, this);
   subscriber2_ = nh_->subscribe("/ntm/camera", 1, &ObjectObserver2::callback2, this);
 
+  const_cast<mc_control::MCController &>(ctl).datastore().make_call(
+    object_+"::X_C_Object",
+    [this]() -> const sva::PTransformd &
+    {
+      const std::lock_guard<std::mutex> lock(mutex_);
+      return isFiltered_ ? estimatedPoseFiltered_ : estimatedPose_;
+    }
+  );
+
   thread_ = std::thread(std::bind(&ObjectObserver2::rosSpinner, this));
 
   desc_ = fmt::format("{} (Object: {}, Topic: {})", name(), object_, topic_);
