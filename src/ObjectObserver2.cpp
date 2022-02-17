@@ -130,6 +130,7 @@ void ObjectObserver2::callback(const geometry_msgs::PoseStamped & msg)
   else
   {
     isEstimatorAlive_ = false;
+    poseFromTopic_ = {sva::PTransformd::Identity(), 0.0};
   }
 }
 

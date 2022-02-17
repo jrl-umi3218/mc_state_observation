@@ -183,12 +183,15 @@ void SLAMObserver2::update(mc_control::MCController & ctl)
 
     for(auto & robot : robots_)
     {
-      // This rely on real robot estimation which might be wrong
-      // robot.posW(ctl.realRobot(robot.name()).posW() * ctl.realRobot().posW().inv() * main_robot.posW());
-      // Instead rely only on vSLAM camera estimation and corresponding object pose estimation
-
-      const sva::PTransformd X_C_Object = ctl.datastore().call<sva::PTransformd>(robot.name()+"::X_C_Object");
-      robot.posW(X_C_Object * camera());
+      if(ctl.datastore().has(robot.name()+"::X_C_Object"))
+      {
+      	const sva::PTransformd & X_C_Object = ctl.datastore().call<const sva::PTransformd &>(robot.name()+"::X_C_Object");
+      	robot.posW(X_C_Object * (isFiltered_ ? estimatedPoseFiltered_ : estimatedPose_));
+      }
+      else
+      {
+        robot.posW(ctl.realRobot(robot.name()).posW() * ctl.realRobot().posW().inv() * main_robot.posW());
+      }
       mc_rtc::ROSBridge::update_robot_publisher("SLAM_" + robot.name(), ctl.timeStep, robot);
     }
   }
