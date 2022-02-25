@@ -205,6 +205,9 @@ void SLAMObserver2::addToLogger(const mc_control::MCController & ctl,
   logger.addLogEntry(category + "_LeftFootCenter", [this]() { return robots_.robot().surfacePose("LeftFootCenter"); });
   logger.addLogEntry(category + "_RightFootCenter",
                      [this]() { return robots_.robot().surfacePose("RightFootCenter"); });
+  logger.addLogEntry(category + "_InternLeftHand", [this]() { return robots_.robot().surfacePose("InternLeftHand"); });
+  logger.addLogEntry(category + "_InternRightHand",
+                     [this]() { return robots_.robot().surfacePose("InternRightHand"); });
   logger.addLogEntry(category + "_com", [this]() { return robots_.robot().com(); });
 
   for(auto & robot : robots_)
