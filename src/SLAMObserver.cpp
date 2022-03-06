@@ -82,6 +82,7 @@ void SLAMObserver::configure(const mc_control::MCController & ctl, const mc_rtc:
     {
       ground_ = static_cast<std::string>(config("SLAM")("ground"));
     }
+    config("SLAM")("initializeWithIdentity", isInitialized_);
   }
   else
   {
