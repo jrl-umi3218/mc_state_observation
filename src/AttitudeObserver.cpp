@@ -54,8 +54,8 @@ void AttitudeObserver::reset(const mc_control::MCController & ctl)
 
   q_.noalias() = so::Matrix::Identity(STATE_SIZE, STATE_SIZE) * c.stateCov;
   r_.noalias() = so::Matrix::Identity(MEASUREMENT_SIZE, MEASUREMENT_SIZE) * c.acceleroCovariance;
-  q_(9, 9) = q_(10, 10) = q_(11, 11) = c.orientationAccCov;
-  q_(6, 6) = q_(7, 7) = q_(8, 8) = c.linearAccCov;
+  q_.diagonal().segment<3>(indexes::angAcc).setConstant(c.orientationAccCov);
+  q_.diagonal().segment<3>(indexes::linAcc).setConstant(c.linearAccCov);
   r_(3, 3) = r_(4, 4) = r_(5, 5) = c.gyroCovariance;
 
   filter_.reset();
