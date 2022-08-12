@@ -103,8 +103,8 @@ protected:
   stateObservation::Vector uk_;
   stateObservation::Vector xk_;
 
-  stateObservation::Matrix3 Kpt_, Kdt_;
-  stateObservation::Matrix3 Kpo_, Kdo_;
+  stateObservation::Matrix3 Kpt_, Kdt_, Kat_;
+  stateObservation::Matrix3 Kpo_, Kdo_, Kao_;
 
   Eigen::Matrix3d m_orientation = Eigen::Matrix3d::Identity(); ///< Result
   Eigen::Vector3d m_gyrobias = Eigen::Vector3d::Zero();

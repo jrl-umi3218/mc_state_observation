@@ -23,10 +23,14 @@ AttitudeObserver::AttitudeObserver(const std::string & type, double dt)
   imuFunctor_.setSamplingPeriod(dt_);
   filter_.setFunctor(&imuFunctor_);
 
+  /// 3rd order control of the position and orientation
+  ///(check the stability of the gain parameters)
   Kpt_ << -20, 0, 0, 0, -20, 0, 0, 0, -20;
   Kdt_ << -10, 0, 0, 0, -10, 0, 0, 0, -10;
+  Kat_ << -10, 0, 0, 0, -10, 0, 0, 0, -10;
   Kpo_ << -0, 0, 0, 0, -0, 0, 0, 0, -20;
   Kdo_ << -5, 0, 0, 0, -5, 0, 0, 0, -50;
+  Kao_ << -5, 0, 0, 0, -5, 0, 0, 0, -50;
 }
 
 void AttitudeObserver::configure(const mc_control::MCController & ctl, const mc_rtc::Configuration & config)
@@ -164,9 +168,11 @@ bool AttitudeObserver::run(const mc_control::MCController & ctl)
 
   auto time = filter_.getCurrentTime();
 
-  /// damped linear and angular spring
-  uk_.head<3>() = Kpt_ * xk_.segment<3>(indexes::pos) + Kdt_ * xk_.segment<3>(indexes::linVel);
-  uk_.tail<3>() = Kpo_ * xk_.segment<3>(indexes::ori) + Kdo_ * xk_.segment<3>(indexes::angVel);
+  /// 3rd order jerk control
+  uk_.head<3>() = Kpt_ * xk_.segment<3>(indexes::pos) + Kdt_ * xk_.segment<3>(indexes::linVel)
+                  + Kat_ * xk_.segment<3>(indexes::linAcc);
+  uk_.tail<3>() = Kpo_ * xk_.segment<3>(indexes::ori) + Kdo_ * xk_.segment<3>(indexes::angVel)
+                  + Kao_ * xk_.segment<3>(indexes::angAcc);
 
   // uk_ is actually the acceleration change
   uk_ -= xk_.segment<6>(indexes::linAcc);
