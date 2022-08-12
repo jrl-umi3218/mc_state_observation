@@ -32,7 +32,10 @@ public:
     double gyroCovariance = 1e-10;
     double orientationAccCov = 0.003;
     double linearAccCov = 1e-13;
+    double biasDriftCov = 1e-10;
+    double biasInitCov = 1e-7;
     double stateCov = 3e-14;
+    double oriCov = 1e-12;
     double stateInitCov = 1e-8;
     Eigen::Matrix3d offset = Eigen::Matrix3d::Identity(); ///< Offset to apply to the estimation result
     void addToLogger(mc_rtc::Logger & logger, const std::string & category);
@@ -62,6 +65,11 @@ protected:
                 mc_rtc::gui::StateBuilder &,
                 const std::vector<std::string> & /* category */) override;
 
+  void switchWithGyroBias(bool);
+
+  void setGyroBiasToMeanValue(); /// set the value of the bias to the mean identified value
+  void startGyroBiasIdentification(); /// start the identification of the bias from the curren gyro readings
+
 protected:
   /// @{
   std::string robot_ = ""; ///< Name of robot to which the IMU sensor belongs
@@ -72,12 +80,14 @@ protected:
   KalmanFilterConfig config_; ///< Current configuration for the KF (GUI, etc...)
   bool log_kf_ = false; ///< Whether to log the parameters of the kalman filter
   bool initFromControl_ = true; ///< Whether to initialize from the control state
-  /// @}
+  bool withGyroBias_ = false; ///< Whether the estimator will be considering gyro bias
 
   /// Sizes of the states for the state, the measurement, and the input vector
-  static constexpr unsigned STATE_SIZE = 18;
-  static constexpr unsigned MEASUREMENT_SIZE = 6;
-  static constexpr unsigned INPUT_SIZE = 6;
+  static constexpr stateObservation::Index STATE_SIZE_BASE = 18;
+  static constexpr stateObservation::Index MEASUREMENT_SIZE = 6;
+  static constexpr stateObservation::Index INPUT_SIZE = 6;
+
+  stateObservation::Index stateSize_ = STATE_SIZE_BASE;
 
   double lastStateInitCovariance_;
 
@@ -97,8 +107,19 @@ protected:
   stateObservation::Matrix3 Kpo_, Kdo_;
 
   Eigen::Matrix3d m_orientation = Eigen::Matrix3d::Identity(); ///< Result
-};
+  Eigen::Vector3d m_gyrobias = Eigen::Vector3d::Zero();
+  Eigen::Vector3d m_gyroMeasurementTotal =
+      Eigen::Vector3d::Zero(); /// the sum of values of gyro measurements (used to compute the mean value)
+  unsigned m_numberOfValues = 0;
 
+  bool m_resetGUI = false;
+  std::vector<std::string> m_category;
+
+  bool m_gyroBiasFromMeasurement_running = false; /// sets if the identification of the gyro bias is stoped
+
+  Eigen::Vector3d m_accIn = Eigen::Vector3d::Zero();
+  Eigen::Vector3d m_rateIn = Eigen::Vector3d::Zero();
+};
 
 } // namespace mc_state_observation
 
@@ -116,6 +137,7 @@ struct ConfigurationLoader<mc_state_observation::AttitudeObserver::KalmanFilterC
     config("gyr_cov", c.gyroCovariance);
     config("ori_acc_cov", c.orientationAccCov);
     config("lin_acc_cov", c.linearAccCov);
+    config("bias_drift_cov", c.biasDriftCov);
     config("state_cov", c.stateCov);
     config("state_init_cov", c.stateInitCov);
     return c;
@@ -128,6 +150,7 @@ struct ConfigurationLoader<mc_state_observation::AttitudeObserver::KalmanFilterC
     config.add("acc_cov", c.acceleroCovariance);
     config.add("gyr_cov", c.gyroCovariance);
     config.add("ori_acc_cov", c.orientationAccCov);
+    config.add("bias_drift_cov", c.biasDriftCov);
     config.add("lin_acc_cov", c.linearAccCov);
     config.add("state_cov", c.stateCov);
     config.add("state_init_cov", c.stateInitCov);
