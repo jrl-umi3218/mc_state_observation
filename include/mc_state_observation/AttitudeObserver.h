@@ -11,9 +11,9 @@ namespace mc_state_observation
 struct AttitudeObserver : public mc_observers::Observer
 {
   EIGEN_MAKE_ALIGNED_OPERATOR_NEW
-  using indexes = stateObservation::kine::indexes<stateObservation::kine::rotationVector>;
+  using indexes = stateObservation::IMUDynamicalSystem::indexes;
 
- public:
+public:
   AttitudeObserver(const std::string & type, double dt);
 
   void configure(const mc_control::MCController & ctl, const mc_rtc::Configuration &) override;
