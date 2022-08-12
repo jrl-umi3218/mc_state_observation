@@ -234,6 +234,8 @@ void AttitudeObserver::addToLogger(const mc_control::MCController &,
   logger.addLogEntry(category + "_orientation", [this]() -> sva::PTransformd {
     return sva::PTransformd{m_orientation, Eigen::Vector3d::Zero()};
   });
+  logger.addLogEntry(category + "_gyroBias", [this]() { return m_gyrobias; });
+});
   if(log_kf_)
   {
     config_.addToLogger(logger, category);
@@ -243,6 +245,7 @@ void AttitudeObserver::addToLogger(const mc_control::MCController &,
 void AttitudeObserver::removeFromLogger(mc_rtc::Logger & logger, const std::string & category)
 {
   logger.removeLogEntry(category + "_orientation");
+  logger.removeLogEntry(category + "_gyroBias");
   if(log_kf_)
   {
     config_.removeFromLogger(logger, category);
