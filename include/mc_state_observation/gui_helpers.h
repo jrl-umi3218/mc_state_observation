@@ -35,6 +35,13 @@ auto make_number_input(std::string name, T & value)
   return NumberInputImpl<decltype(GetF), decltype(SetF)>(name, GetF, SetF);
 }
 
+auto make_xyz_input(std::string name, Eigen::Vector3d & vec)
+{
+  auto GetF = [&vec]() -> Eigen::Vector3d { return vec; };
+  auto SetF = [&vec](const Eigen::Vector3d & vecIn) { vec = vecIn; };
+  return ArrayInputImpl<decltype(GetF), decltype(SetF)>(name, {"x", "y", "z"}, GetF, SetF);
+}
+
 auto make_rpy_input(std::string name, Eigen::Matrix3d & orientation)
 {
   auto GetF = [&orientation]() -> Eigen::Vector3d
