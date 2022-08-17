@@ -308,6 +308,8 @@ void AttitudeObserver::setGyroBiasToMeanValue()
   m_gyrobias = m_gyroMeasurementTotal / m_numberOfValues;
   m_gyroBiasFromMeasurement_running = false;
 
+  mc_rtc::log::info("Gyro bias identification finished, value: {} ", m_gyrobias.transpose());
+
   if(withGyroBias_)
   {
     xk_.segment<3>(indexes::gyroBias) = m_gyrobias;
@@ -329,6 +331,8 @@ void AttitudeObserver::startGyroBiasIdentification()
   m_numberOfValues = 0;
   m_gyroBiasFromMeasurement_running = true;
   m_gyroMeasurementTotal.setZero();
+
+  mc_rtc::log::info("Gyro bias identification started");
 
   m_resetGUI = true;
 }
