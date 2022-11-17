@@ -35,7 +35,7 @@ void TiltObserver::configure(const mc_control::MCController & ctl, const mc_rtc:
   desc_ = fmt::format("{}", name_);
 }
 
-void TiltObserver::reset(const mc_control::MCController & ctl) {}
+void TiltObserver::reset(const mc_control::MCController &) {}
 
 bool TiltObserver::run(const mc_control::MCController & ctl)
 {
@@ -115,10 +115,10 @@ void TiltObserver::update(mc_control::MCController & ctl)
 
   if(updateSensor_)
   {
-    auto & imu = ctl.robot(robot_).bodySensor(imuSensor_);
-    auto & rimu = ctl.realRobot(robot_).bodySensor(imuSensor_);
+    auto & robot = ctl.robot(robot_);
+    auto & data = *robot.data();
+    auto & imu = data.bodySensors.at(data.bodySensorsIndex.at(imuSensor_));
     imu.orientation(Eigen::Quaterniond{estimatedRotationIMU_});
-    rimu.orientation(Eigen::Quaterniond{estimatedRotationIMU_});
   }
 }
 
@@ -138,7 +138,7 @@ void TiltObserver::removeFromLogger(mc_rtc::Logger & logger, const std::string &
   logger.removeLogEntry(category + "_controlAnchorFrame");
 }
 
-void TiltObserver::addToGUI(const mc_control::MCController & ctl,
+void TiltObserver::addToGUI(const mc_control::MCController &,
                             mc_rtc::gui::StateBuilder & gui,
                             const std::vector<std::string> & category)
 {
