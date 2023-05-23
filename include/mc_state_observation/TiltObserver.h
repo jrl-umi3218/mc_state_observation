@@ -2,6 +2,7 @@
 
 #include <mc_observers/Observer.h>
 #include <state-observation/observer/tilt-estimator.hpp>
+#include <state-observation/tools/rigid-body-kinematics.hpp>
 
 namespace mc_state_observation
 {
@@ -21,6 +22,12 @@ struct TiltObserver : public mc_observers::Observer
   void update(mc_control::MCController & ctl) override;
 
 protected:
+  /*! \brief update the robot pose in the world only for visualization purpose
+   *
+   * @param robot Robot to update
+   */
+
+  void update(mc_rbdyn::Robot & robot, const mc_control::MCController & ctl);
   /*! \brief Add observer from logger
    *
    * @param category Category in which to log this observer
@@ -61,10 +68,14 @@ protected:
   
   
   // values used for computation
-  sva::PTransformd X_fb_imu = sva::PTransformd::Identity();
+  stateObservation::kine::Kinematics fbImuKine_;
   sva::MotionVecd imuVelC_ = sva::MotionVecd::Zero();
   sva::PTransformd X_C_IMU_ = sva::PTransformd::Identity();
   sva::PTransformd X_0_C_ = sva::PTransformd::Identity(); // control anchor frame
+
+  stateObservation::Vector3 previousWorldAnchorePosition = stateObservation::Vector3::Zero();
+  stateObservation::Vector3 worldAnchorLinVel = stateObservation::Vector3::Zero();
+  stateObservation::Vector3 worldAnchorLocalLinVel = stateObservation::Vector3::Zero();
 
   // result
   // The observed tilt of the sensor
@@ -96,6 +107,11 @@ protected:
   stateObservation::Vector xk_;
 
   bool firstSample_;
+
+private:
+  std::shared_ptr<mc_rbdyn::Robots> my_robots_;
+  Eigen::Matrix3d R_0_fb_; // estimated orientation of the floating base in the world frame
+  sva::PTransformd poseForDisplay;
 };
 
 } // namespace mc_state_observation

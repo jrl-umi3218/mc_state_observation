@@ -1,8 +1,9 @@
 #include <mc_control/MCController.h>
 #include <mc_observers/ObserverMacros.h>
+#include <iostream>
 #include <mc_state_observation/TiltObserver.h>
 #include <mc_state_observation/gui_helpers.h>
-#include <state-observation/tools/rigid-body-kinematics.hpp>
+#include <mc_state_observation/svaKinematicsConversion.h>
 
 namespace mc_state_observation
 {
@@ -27,7 +28,8 @@ void TiltObserver::configure(const mc_control::MCController & ctl, const mc_rtc:
   config("alpha", alpha_);
   config("beta", beta_);
   config("gamma", gamma_);
-  anchorFrameFunction_ = config("anchorFrameFunction", name() + "::" + ctl.robot(robot_).name());
+  // anchorFrameFunction_ = config("anchorFrameFunction", name() + "::" + ctl.robot(robot_).name());
+  anchorFrameFunction_ = "KinematicAnchorFrame::" + ctl.robot(robot_).name();
   config("updateRobot", updateRobot_);
   config("updateRobotName", updateRobotName_);
   config("updateSensor", updateSensor_);
@@ -35,7 +37,18 @@ void TiltObserver::configure(const mc_control::MCController & ctl, const mc_rtc:
   desc_ = fmt::format("{}", name_);
 }
 
-void TiltObserver::reset(const mc_control::MCController & ctl) {}
+void TiltObserver::reset(const mc_control::MCController & ctl)
+{
+  const auto & robot = ctl.robot(robot_);
+  const auto & realRobot = ctl.realRobot(robot_);
+
+  my_robots_ = mc_rbdyn::Robots::make();
+  my_robots_->robotCopy(robot, robot.name());
+  my_robots_->robotCopy(realRobot, "inputRobot");
+  ctl.gui()->addElement(
+      {"Robots"},
+      mc_rtc::gui::Robot("TiltEstimator", [this]() -> const mc_rbdyn::Robot & { return my_robots_->robot(); }));
+}
 
 bool TiltObserver::run(const mc_control::MCController & ctl)
 {
@@ -60,30 +73,64 @@ bool TiltObserver::run(const mc_control::MCController & ctl)
   // - orientation of the IMU
   // - linear velocity of the imu
   // - angular velocity of the imu
-  // - linear velocity of the control frame (derivative?)
+  // - linear velocity of the anchor frame in the world of the control robot (derivative?)
+
+  so::kine::Kinematics worldAnchorKine;
+  worldAnchorKine.position = X_0_C_.translation();
+  worldAnchorKine.orientation = so::Matrix3(X_0_C_.rotation().transpose());
 
   const auto & robot = ctl.robot(robot_);
   const auto & imu = robot.bodySensor(imuSensor_);
   auto X_0_B = robot.posW();
-  auto X_0_IMU = imu.X_b_s() * robot.bodyPosW(imu.parentBody());
-  X_fb_imu = X_0_IMU * X_0_B.inv();
+
+  so::kine::Kinematics worldFBKine;
+  worldFBKine.position = X_0_B.translation();
+  worldFBKine.orientation = so::Matrix3(X_0_B.rotation().transpose());
+
+  const sva::PTransformd & imuXbs = imu.X_b_s();
+  so::kine::Kinematics bodyImuKine;
+  bodyImuKine.position = imuXbs.translation();
+  bodyImuKine.orientation = so::Matrix3(imuXbs.rotation().transpose());
+
+  so::kine::Kinematics worldBodyKine;
+  const sva::PTransformd & bodyW = robot.bodyPosW(imu.parentBody());
+  worldBodyKine.position = bodyW.translation();
+  worldBodyKine.orientation = so::Matrix3(bodyW.rotation().transpose());
+
   // auto RF = anchorFrame.oriention().transpose(); // orientation of the control anchor frame
   // auto RB = robot.posW().orientation().transpose(); // orientation of the control floating base
 
-  // Pose of the imu in the control frame
-  X_C_IMU_ = X_0_IMU * X_0_C_.inv();
   // Compute velocity of the imu in the control frame
   auto v_0_imuParent = robot.mbc().bodyVelW[robot.bodyIndexByName(imu.parentBody())];
-  auto v_0_IMU = imu.X_b_s() * v_0_imuParent;
-  auto v_c_IMU = X_C_IMU_.inv() * v_0_IMU;
-  imuVelC_ = v_c_IMU;
+  worldBodyKine.linVel = v_0_imuParent.linear();
+  worldBodyKine.angVel = v_0_imuParent.angular();
 
-  estimator_.setSensorPositionInC(X_C_IMU_.translation());
-  estimator_.setSensorOrientationInC(X_C_IMU_.rotation().transpose());
-  estimator_.setSensorLinearVelocityInC(imuVelC_.linear());
-  estimator_.setSensorAngularVelocityInC(imuVelC_.angular());
-  // XXX how to set
-  estimator_.setControlOriginVelocityInW(Eigen::Vector3d::Zero());
+  so::kine::Kinematics worldImuKine = worldBodyKine * bodyImuKine;
+
+  // Pose of the imu in the control frame
+  so::kine::Kinematics anchorImuKine = worldAnchorKine.getInverse() * worldImuKine;
+
+  so::kine::Kinematics fbImuKine = worldFBKine.getInverse() * worldImuKine;
+
+  BOOST_ASSERT((anchorImuKine.linVel.isSet() || anchorImuKine.angVel.isSet()) && "vels were not computed");
+
+  estimator_.setSensorPositionInC(anchorImuKine.position());
+  estimator_.setSensorOrientationInC(anchorImuKine.orientation.toMatrix3());
+  estimator_.setSensorLinearVelocityInC(anchorImuKine.linVel());
+  estimator_.setSensorAngularVelocityInC(anchorImuKine.angVel());
+
+  worldAnchorLinVel = 1.0 / estimator_.getSamplingTime() * (worldAnchorKine.position() - previousWorldAnchorePosition);
+
+  std::cout << std::endl
+            << worldAnchorKine.position() << "  |  " << previousWorldAnchorePosition << "  =  " << worldAnchorLinVel;
+
+  worldAnchorLocalLinVel = worldAnchorKine.orientation.toMatrix3().transpose() * worldAnchorLinVel;
+
+  std::cout << std::endl << worldAnchorLocalLinVel;
+
+  estimator_.setControlOriginVelocityInW(worldAnchorLocalLinVel);
+
+  previousWorldAnchorePosition = worldAnchorKine.position();
 
   auto k = estimator_.getCurrentTime();
 
@@ -94,7 +141,19 @@ bool TiltObserver::run(const mc_control::MCController & ctl)
   so::Vector3 tilt = xk_.tail(3);
 
   // Orientation of body?
-  estimatedRotationIMU_ = so::kine::mergeTiltWithYaw(tilt, X_0_IMU.rotation().transpose()).transpose();
+  estimatedRotationIMU_ = so::kine::mergeTiltWithYaw(tilt, worldImuKine.orientation.toMatrix3());
+
+  // update the velocities as MotionVecd for the logs
+  imuVelC_.linear() = anchorImuKine.linVel();
+  imuVelC_.angular() = anchorImuKine.angVel();
+
+  // update the pose as PTransformd for the logs
+  X_C_IMU_.translation() = anchorImuKine.position();
+  X_C_IMU_.rotation() = anchorImuKine.orientation.toMatrix3().transpose();
+
+  /* Update of the observed robot */
+  my_robots_->robot().mbc().q = ctl.realRobot().mbc().q;
+  update(my_robots_->robot(), ctl);
 
   return true;
 }
@@ -105,8 +164,8 @@ void TiltObserver::update(mc_control::MCController & ctl)
   {
     auto & robot = ctl.realRobots().robot(updateRobot_);
     auto posW = robot.posW();
-    Eigen::Matrix3d R_0_fb = estimatedRotationIMU_ * X_fb_imu.rotation();
-    posW.rotation() = R_0_fb.transpose();
+    R_0_fb_ = estimatedRotationIMU_ * fbImuKine_.orientation.toMatrix3();
+    posW.rotation() = R_0_fb_.transpose();
     mc_rtc::log::info("update robot: {}", mc_rbdyn::rpyFromMat(posW.rotation()));
     posW.translation() = Eigen::Vector3d::Zero();
     robot.posW(posW);
@@ -115,11 +174,22 @@ void TiltObserver::update(mc_control::MCController & ctl)
 
   if(updateSensor_)
   {
-    auto & imu = ctl.robot(robot_).bodySensor(imuSensor_);
-    auto & rimu = ctl.realRobot(robot_).bodySensor(imuSensor_);
+    // auto & imu = ctl.robot(robot_).bodySensor(imuSensor_);
+    auto & imu = const_cast<mc_rbdyn::BodySensor &>(ctl.robot(robot_).bodySensor(imuSensor_));
+    auto & rimu = const_cast<mc_rbdyn::BodySensor &>(ctl.realRobot(robot_).bodySensor(imuSensor_));
+
     imu.orientation(Eigen::Quaterniond{estimatedRotationIMU_});
     rimu.orientation(Eigen::Quaterniond{estimatedRotationIMU_});
   }
+}
+
+void TiltObserver::update(mc_rbdyn::Robot & robot, const mc_control::MCController & ctl)
+{
+  const auto & realRobot = ctl.realRobot(robot_);
+  R_0_fb_ = estimatedRotationIMU_ * fbImuKine_.orientation.toMatrix3();
+  poseForDisplay = realRobot.posW();
+  poseForDisplay.rotation() = R_0_fb_.transpose();
+  robot.posW(poseForDisplay);
 }
 
 void TiltObserver::addToLogger(const mc_control::MCController &, mc_rtc::Logger & logger, const std::string & category)
@@ -128,6 +198,12 @@ void TiltObserver::addToLogger(const mc_control::MCController &, mc_rtc::Logger 
   logger.addLogEntry(category + "_imuPoseC", [this]() -> const sva::PTransformd & { return X_C_IMU_; });
   logger.addLogEntry(category + "_imuEstRotW", [this]() { return Eigen::Quaterniond{estimatedRotationIMU_}; });
   logger.addLogEntry(category + "_controlAnchorFrame", [this]() -> const sva::PTransformd & { return X_0_C_; });
+  logger.addLogEntry(category + "_displayedWorldFbPose",
+                     [this]() -> const sva::PTransformd & { return poseForDisplay; });
+  logger.addLogEntry(category + "_anchorFramelinVel_global",
+                     [this]() -> const so::Vector3 & { return worldAnchorLinVel; });
+  logger.addLogEntry(category + "_anchorFramelinVel_local",
+                     [this]() -> const so::Vector3 & { return worldAnchorLocalLinVel; });
 }
 
 void TiltObserver::removeFromLogger(mc_rtc::Logger & logger, const std::string & category)
@@ -142,7 +218,7 @@ void TiltObserver::addToGUI(const mc_control::MCController & ctl,
                             mc_rtc::gui::StateBuilder & gui,
                             const std::vector<std::string> & category)
 {
-  using namespace mc_rtc::gui;
+  using namespace mc_state_observation::gui;
   gui.addElement(category, make_input_element("alpha", alpha_), make_input_element("beta", beta_),
                  make_input_element("gamma", gamma_));
 }
