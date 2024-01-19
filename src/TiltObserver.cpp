@@ -931,10 +931,7 @@ void TiltObserver::addToLogger(const mc_control::MCController & ctl,
 
   logger.addLogEntry(category + "_debug_contactDetected",
                      [this]() -> std::string
-                     {
-                       if(odometryManager_.contactsManager().contactsFound().size() > 0) { return "contacts"; }
-                       else { return "no contacts"; }
-                     });
+                     { return odometryManager_.contactsManager().contactsDetected() ? "contacts" : "no contacts"; });
 
   logger.addLogEntry(category + "_debug_ctlBodyVel",
                      [this, &ctl]() -> so::Vector3

@@ -68,16 +68,13 @@ void MCKineticsObserver::configure(const mc_control::MCController & ctl, const m
         config("contactSensorsDisabledInit", std::vector<std::string>());
     for(auto const & contactSensorDisabledInit : contactSensorsDisabledInit)
     {
-      if(std::find(contactsManager_.getList().begin(), contactsManager_.getList().end(), contactSensorDisabledInit)
-         != contactsManager_.getList().end())
-      {
-        contactsManager_.contact(contactSensorDisabledInit).sensorEnabled_ = false;
-      }
-      else
+      auto * contact = contactsManager_.findContact(contactSensorDisabledInit);
+      if(!contact)
       {
         mc_rtc::log::error_and_throw("The force sensor {} set as disabled on initialization does not exist.",
                                      contactSensorDisabledInit);
       }
+      contact->sensorEnabled_ = false;
     }
   }
   if(contactsDetectionMethod == KoContactsManager::ContactsDetection::Sensors)
@@ -91,18 +88,15 @@ void MCKineticsObserver::configure(const mc_control::MCController & ctl, const m
     // we set the force sensor of the desired contacts as disabled
     std::vector<std::string> contactSensorsDisabledInit =
         config("contactSensorsDisabledInit", std::vector<std::string>());
-    for(auto const & contactSensorDisabledInit : contactSensorsDisabledInit)
+    for(const auto & contactSensorDisabledInit : contactSensorsDisabledInit)
     {
-      if(std::find(contactsManager_.getList().begin(), contactsManager_.getList().end(), contactSensorDisabledInit)
-         != contactsManager_.getList().end())
-      {
-        contactsManager_.contact(contactSensorDisabledInit).sensorEnabled_ = false;
-      }
-      else
+      auto * contact = contactsManager_.findContact(contactSensorDisabledInit);
+      if(!contact)
       {
         mc_rtc::log::error_and_throw("The force sensor {} set as disabled on initialization does not exist.",
                                      contactSensorDisabledInit);
       }
+      contact->sensorEnabled_ = false;
     }
   }
   if(contactsDetectionMethod == KoContactsManager::ContactsDetection::Solver)
@@ -484,9 +478,9 @@ bool MCKineticsObserver::run(const mc_control::MCController & ctl)
 
         observer_.setWorldCentroidStateKinematics(newWorldCentroidKine, false);
 
-        for(const int & contactIndex : contactsManager_.contactsFound())
+        for(auto & [_, contact] : contactsManager_.contacts())
         {
-          KoContactWithSensor & contact = contactsManager_.contact(contactIndex);
+          if(!contact.isSet()) { continue; }
 
           // Update of the force measurements (the contribution of the gravity changed)
           const mc_rbdyn::ForceSensor & forceSensor = robot.forceSensor(contact.forceSensor());
@@ -576,9 +570,9 @@ bool MCKineticsObserver::run(const mc_control::MCController & ctl)
         observer_.setGyroBias(imu.gyroBias, static_cast<unsigned int>(i), true);
       }
 
-      for(const int & contactIndex : contactsManager_.contactsFound())
+      for(auto & [_, contact] : contactsManager_.contacts())
       {
-        KoContactWithSensor & contact = contactsManager_.contact(contactIndex);
+        if(!contact.isSet()) { continue; }
 
         // Update of the force measurements (the offset due to the gravity changed)
         const mc_rbdyn::ForceSensor & forceSensor = inputRobot.forceSensor(contact.forceSensor());
@@ -1648,11 +1642,7 @@ void MCKineticsObserver::addContactLogEntries(const mc_control::MCController & c
                          return observer_.getUserContactInputPose(contact.id()).orientation.inverse().toQuaternion();
                        });
     logger.addLogEntry(observerName_ + "_debug_contactState_isSet_" + contact.name(), &contact,
-                       [this, &contact]() -> std::string
-                       {
-                         if(contactsManager_.contact(contact.id()).isSet()) { return "Set"; }
-                         else { return "notSet"; }
-                       });
+                       [this, &contact]() -> std::string { return contact.isSet() ? "Set" : "notSet"; });
   }
 }
 
