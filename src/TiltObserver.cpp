@@ -400,45 +400,43 @@ void TiltObserver::runTiltEstimator(const mc_control::MCController & ctl, const 
   }
   else
   {
-    // when using the odometry, we use the x1 computed internally by the Tilt Observer
-    estimator_.setSensorPositionInC(updatedAnchorImuKine.position());
-    estimator_.setSensorOrientationInC(updatedAnchorImuKine.orientation.toMatrix3());
-    estimator_.setSensorLinearVelocityInC(updatedAnchorImuKine.linVel());
-    estimator_.setSensorAngularVelocityInC(updatedAnchorImuKine.angVel());
-    estimator_.setControlOriginVelocityInW(worldAnchorKine_.orientation.toMatrix3().transpose()
-                                           * worldAnchorKine_.linVel());
+    // The anchor frame can be obtained using 2 ways:
+    // - 1: contacts are detected and can be used
+    // - 2: no contact is detected, the robot is hanging. As we still need an anchor frame for the tilt estimation we
+    // arbitrarily use the frame of the IMU. As we cannot perform odometry anymore as there is no contact, we cannot
+    // obtain the velocity of the IMU. We will then consider it as zero and consider it as constant with the linear
+    // acceleration as zero too.
+    // When switching from one mode to another, we consider x1hat = x1 before the estimation to avoid discontinuities.
 
-    estimator_.setMeasurement(imu.linearAcceleration(), imu.angularVelocity(), k + 1);
-    x1_ = estimator_.getVirtualLocalVelocityMeasurement();
-
-    // If the following variable is set, it means that the mode of computation of the anchor frame changed.
+    // If the following variable is set, it means that no contact was detected and thus we are in the case 2 as defined
+    // above.
     if(newWorldAnchorKine_.linVel.isSet())
     {
-      // The anchor frame can be obtained using 2 ways:
-      // - 1: contacts are detected and can be used
-      // - 2: no contact is detected, the robot is hanging. As we still need an anchor frame for the tilt estimation we
-      // arbitrarily use the frame of the IMU. As we cannot perform odometry anymore as there is no contact, we cannot
-      // obtain the velocity of the IMU. We will then consider it as zero and consider it as constant with the linear
-      // acceleration as zero too.
-      // When switching from one mode to another, we consider x1hat = x1 before the estimation to avoid discontinuities.
-
-      updatedImuAnchorKine_.linVel().setZero();
-      updatedImuAnchorKine_.angVel().setZero();
-
-      if(odometryManager_.prevAnchorFromContacts_)
-      {
-        estimator_.setMeasurement(so::Vector3::Zero(), imu.linearAcceleration(), imu.angularVelocity(), k + 1);
-        x1_ = estimator_.getVirtualLocalVelocityMeasurement();
-        // estimator_.setAlpha(0);
-      }
-      else
-      {
-        // estimator_.setAlpha(alpha_);
-      }
-
-      estimator_.resetImuLocVelHat();
+      estimator_.setAlpha(30);
+      estimator_.setBeta(0);
+      //  estimator_.setGamma(0.1);
+      estimator_.setMeasurement(so::Vector3::Zero(), imu.linearAcceleration(), imu.angularVelocity(), k + 1);
     }
+    else
+    {
+      estimator_.setAlpha(alpha_);
+      estimator_.setBeta(beta_);
+      //  estimator_.setGamma(gamma_);
+
+      // when using the odometry, we use the x1 computed internally by the Tilt Observer
+      estimator_.setSensorPositionInC(updatedAnchorImuKine.position());
+      estimator_.setSensorOrientationInC(updatedAnchorImuKine.orientation.toMatrix3());
+      estimator_.setSensorLinearVelocityInC(updatedAnchorImuKine.linVel());
+      estimator_.setSensorAngularVelocityInC(updatedAnchorImuKine.angVel());
+      estimator_.setControlOriginVelocityInW(worldAnchorKine_.orientation.toMatrix3().transpose()
+                                             * worldAnchorKine_.linVel());
+
+      estimator_.setMeasurement(imu.linearAcceleration(), imu.angularVelocity(), k + 1);
+    }
+    x1_ = estimator_.getVirtualLocalVelocityMeasurement();
   }
+
+  if(odometryManager_.anchorFrameMethodChanged_) { estimator_.resetImuLocVelHat(); }
 
   // estimation of the state with the complementary filters
   xk_ = estimator_.getEstimatedState(k + 1);
@@ -609,6 +607,58 @@ void TiltObserver::addToLogger(const mc_control::MCController & ctl,
                                mc_rtc::Logger & logger,
                                const std::string & category)
 {
+  logger.addLogEntry(category + "_estimatedState_x1", [this]() -> so::Vector3 { return xk_.head(3); });
+  logger.addLogEntry(category + "_estimatedState_x2prime",
+                     [this]() -> so::Vector3 { return xk_.segment(3, 3).normalized(); });
+  logger.addLogEntry(category + "_estimatedState_x2", [this]() -> so::Vector3 { return xk_.tail(3).normalized(); });
+  logger.addLogEntry(category + "_realRobotState_x1",
+                     [this, &ctl]() -> so::Vector3
+                     {
+                       const auto & realRobot = ctl.realRobot(robot_);
+                       const auto & rimu = realRobot.bodySensor(imuSensor_);
+
+                       const sva::PTransformd & rimuXbs = rimu.X_b_s();
+
+                       so::kine::Kinematics parentImuKine = conversions::kinematics::fromSva(
+                           rimuXbs, so::kine::Kinematics::Flags::pose | so::kine::Kinematics::Flags::vel);
+
+                       const sva::PTransformd & realRobotParentPoseW = realRobot.bodyPosW(rimu.parentBody());
+
+                       // Compute velocity of the imu in the control frame
+                       auto & realRobotV_0_imuParent =
+                           realRobot.mbc().bodyVelW[realRobot.bodyIndexByName(rimu.parentBody())];
+
+                       so::kine::Kinematics worldParentKine =
+                           conversions::kinematics::fromSva(realRobotParentPoseW, realRobotV_0_imuParent, true);
+
+                       so::kine::Kinematics worldImuKine = worldParentKine * parentImuKine;
+                       return worldImuKine.orientation.toMatrix3().transpose() * worldImuKine.linVel();
+                     });
+
+  logger.addLogEntry(category + "_realRobotState_x2",
+                     [this, &ctl]() -> so::Vector3
+                     {
+                       const auto & realRobot = ctl.realRobot(robot_);
+                       const auto & rimu = realRobot.bodySensor(imuSensor_);
+
+                       const sva::PTransformd & rimuXbs = rimu.X_b_s();
+
+                       so::kine::Kinematics parentImuKine = conversions::kinematics::fromSva(
+                           rimuXbs, so::kine::Kinematics::Flags::pose | so::kine::Kinematics::Flags::vel);
+
+                       const sva::PTransformd & realRobotParentPoseW = realRobot.bodyPosW(rimu.parentBody());
+
+                       // Compute velocity of the imu in the control frame
+                       auto & realRobotV_0_imuParent =
+                           realRobot.mbc().bodyVelW[realRobot.bodyIndexByName(rimu.parentBody())];
+
+                       so::kine::Kinematics worldParentKine =
+                           conversions::kinematics::fromSva(realRobotParentPoseW, realRobotV_0_imuParent, true);
+
+                       so::kine::Kinematics worldImuKine = worldParentKine * parentImuKine;
+                       return (worldImuKine.orientation.toMatrix3().transpose() * so::Vector3::UnitZ()).normalized();
+                     });
+
   logger.addLogEntry(category + "_constants_alpha", [this]() -> double { return estimator_.getAlpha(); });
   logger.addLogEntry(category + "_constants_beta", [this]() -> double { return estimator_.getBeta(); });
   logger.addLogEntry(category + "_constants_gamma", [this]() -> double { return estimator_.getGamma(); });
@@ -627,7 +677,6 @@ void TiltObserver::addToLogger(const mc_control::MCController & ctl,
 
   logger.addLogEntry(category + "_IMU_world_orientation",
                      [this]() { return Eigen::Quaterniond{estimatedRotationIMU_}; });
-  logger.addLogEntry(category + "_IMU_world_localLinVel", [this]() -> so::Vector3 { return xk_.head(3); });
   logger.addLogEntry(category + "_IMU_AnchorFrame_pose", [this]() -> const sva::PTransformd & { return X_C_IMU_; });
   logger.addLogEntry(category + "_IMU_AnchorFrame_linVel", [this]() -> const sva::MotionVecd & { return imuVelC_; });
   logger.addLogEntry(category + "_AnchorFrame_world_position",
@@ -644,6 +693,79 @@ void TiltObserver::addToLogger(const mc_control::MCController & ctl,
   logger.addLogEntry(category + "_FloatingBase_world_pose", [this]() -> const sva::PTransformd & { return poseW_; });
   logger.addLogEntry(category + "_FloatingBase_world_vel", [this]() -> const sva::MotionVecd & { return velW_; });
   logger.addLogEntry(category + "_debug_x1", [this]() -> const so::Vector3 & { return x1_; });
+
+  logger.addLogEntry(category + "_Hartley_contact1_isSet",
+                     [this]() -> int
+                     {
+                       odometry::LoContactWithSensor & contact =
+                           (*odometryManager_.contactsManager().contacts().begin()).second;
+
+                       if(contact.isSet()) { return 1; }
+                       else { return 0; }
+                     });
+  logger.addLogEntry(category + "_Hartley_contact2_isSet",
+                     [this]() -> int
+                     {
+                       odometry::LoContactWithSensor & contact =
+                           (*std::next(odometryManager_.contactsManager().contacts().begin(), 1)).second;
+                       if(contact.isSet()) { return 1; }
+                       else { return 0; }
+                     });
+
+  logger.addLogEntry(category + "_Hartley_contact1_position",
+                     [this, &ctl]() -> so::Vector3
+                     {
+                       auto & realRobot = ctl.realRobot(robot_);
+                       odometry::LoContactWithSensor & contact =
+                           (*odometryManager_.contactsManager().contacts().begin()).second;
+                       sva::PTransformd worldSurfacePose = realRobot.surfacePose(contact.surface());
+                       so::kine::Kinematics imuContactKine =
+                           updatedWorldImuKine_.getInverse()
+                           * conversions::kinematics::fromSva(worldSurfacePose, so::kine::Kinematics::Flags::pose);
+
+                       return imuContactKine.position();
+                     });
+
+  logger.addLogEntry(category + "_Hartley_contact1_orientation",
+                     [this, &ctl]() -> Eigen::Quaterniond
+                     {
+                       auto & realRobot = ctl.realRobot(robot_);
+                       odometry::LoContactWithSensor & contact =
+                           (*odometryManager_.contactsManager().contacts().begin()).second;
+                       sva::PTransformd worldSurfacePose = realRobot.surfacePose(contact.surface());
+                       so::kine::Kinematics imuContactKine =
+                           updatedWorldImuKine_.getInverse()
+                           * conversions::kinematics::fromSva(worldSurfacePose, so::kine::Kinematics::Flags::pose);
+
+                       return imuContactKine.orientation;
+                     });
+  logger.addLogEntry(category + "_Hartley_contact2_position",
+                     [this, &ctl]() -> so::Vector3
+                     {
+                       auto & realRobot = ctl.realRobot(robot_);
+                       odometry::LoContactWithSensor & contact =
+                           (*std::next(odometryManager_.contactsManager().contacts().begin(), 1)).second;
+                       sva::PTransformd worldSurfacePose = realRobot.surfacePose(contact.surface());
+                       so::kine::Kinematics imuContactKine =
+                           updatedWorldImuKine_.getInverse()
+                           * conversions::kinematics::fromSva(worldSurfacePose, so::kine::Kinematics::Flags::pose);
+
+                       return imuContactKine.position();
+                     });
+
+  logger.addLogEntry(category + "_Hartley_contact2_orientation",
+                     [this, &ctl]() -> Eigen::Quaterniond
+                     {
+                       auto & realRobot = ctl.realRobot(robot_);
+                       odometry::LoContactWithSensor & contact =
+                           (*std::next(odometryManager_.contactsManager().contacts().begin(), 1)).second;
+                       sva::PTransformd worldSurfacePose = realRobot.surfacePose(contact.surface());
+                       so::kine::Kinematics imuContactKine =
+                           updatedWorldImuKine_.getInverse()
+                           * conversions::kinematics::fromSva(worldSurfacePose, so::kine::Kinematics::Flags::pose);
+
+                       return imuContactKine.orientation;
+                     });
 
   logger.addLogEntry(category + "_debug_realWorldImuLocAngVel",
                      [this, &ctl]() -> so::Vector3

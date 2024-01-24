@@ -520,18 +520,20 @@ void LeggedOdometryManager::selectForOrientationOdometry(bool & oriUpdatable,
 void LeggedOdometryManager::addContactLogEntries(mc_rtc::Logger & logger, const LoContactWithSensor & contact)
 {
   const std::string & contactName = contact.name();
-  conversions::kinematics::addToLogger(logger, contact.worldRefKine_, odometryName_ + "_" + contactName + "_refPose");
+  conversions::kinematics::addToLogger(logger, contact.worldRefKine_,
+                                       odometryName_ + "_leggedOdometryManager_" + contactName + "_refPose");
   conversions::kinematics::addToLogger(logger, contact.currentWorldFbPose_,
-                                       odometryName_ + "_" + contactName + "_currentWorldFbPose");
+                                       odometryName_ + "_leggedOdometryManager_" + contactName + "_currentWorldFbPose");
   conversions::kinematics::addToLogger(logger, contact.currentWorldKine_,
-                                       odometryName_ + "_" + contactName + "_currentWorldContactKine");
+                                       odometryName_ + "_leggedOdometryManager_" + contactName
+                                           + "_currentWorldContactKine");
 }
 
 void LeggedOdometryManager::removeContactLogEntries(mc_rtc::Logger & logger, const LoContactWithSensor & contact)
 {
   const std::string & contactName = contact.name();
-  logger.removeLogEntry(odometryName_ + "_" + contactName + "_ref_position");
-  logger.removeLogEntry(odometryName_ + "_" + contactName + "_ref_orientation");
+  logger.removeLogEntry(odometryName_ + "_leggedOdometryManager_" + contactName + "_ref_position");
+  logger.removeLogEntry(odometryName_ + "_leggedOdometryManager_" + contactName + "_ref_orientation");
   conversions::kinematics::removeFromLogger(logger, contact.worldRefKine_);
   conversions::kinematics::removeFromLogger(logger, contact.currentWorldFbPose_);
   conversions::kinematics::removeFromLogger(logger, contact.currentWorldKine_);
@@ -547,6 +549,8 @@ so::kine::Kinematics & LeggedOdometryManager::getAnchorFramePose(const mc_contro
 
   bool posUpdatable = false;
   bool oriUpdatable = false;
+
+  anchorFrameMethodChanged_ = false;
 
   // "force-weighted" sum of the estimated floating base positions
   so::Vector3 totalAnchorPosition = so::Vector3::Zero();
@@ -578,13 +582,8 @@ so::kine::Kinematics & LeggedOdometryManager::getAnchorFramePose(const mc_contro
   if(posUpdatable)
   {
     worldAnchorPose_.position = totalAnchorPosition / sumForces_position;
-
-    if(!prevAnchorFromContacts_)
-    {
-      worldAnchorPose_.linVel.set().setZero();
-      worldAnchorPose_.angVel.set().setZero();
-      prevAnchorFromContacts_ = true;
-    }
+    currAnchorFromContacts_ = true;
+    if(currAnchorFromContacts_ != prevAnchorFromContacts_) { anchorFrameMethodChanged_ = true; }
   }
   else
   {
@@ -603,12 +602,11 @@ so::kine::Kinematics & LeggedOdometryManager::getAnchorFramePose(const mc_contro
     // pose of the IMU in the world frame
     worldAnchorPose_ = worldParentKine * parentImuKine;
 
-    if(prevAnchorFromContacts_)
-    {
-      worldAnchorPose_.linVel.set().setZero();
-      worldAnchorPose_.angVel.set().setZero();
-      prevAnchorFromContacts_ = false;
-    }
+    worldAnchorPose_.linVel.set().setZero();
+    worldAnchorPose_.angVel.set().setZero();
+
+    currAnchorFromContacts_ = false;
+    if(currAnchorFromContacts_ != prevAnchorFromContacts_) { anchorFrameMethodChanged_ = true; }
   }
 
   if(oriUpdatable)
@@ -659,6 +657,8 @@ so::kine::Kinematics & LeggedOdometryManager::getAnchorFramePose(const mc_contro
     so::kine::Kinematics worldImuKine = worldParentKine * parentImuKine;
     worldAnchorPose_.orientation = worldImuKine.orientation;
   }
+
+  prevAnchorFromContacts_ = currAnchorFromContacts_;
 
   return worldAnchorPose_;
 }
