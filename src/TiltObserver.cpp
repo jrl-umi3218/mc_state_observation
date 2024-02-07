@@ -18,9 +18,6 @@ TiltObserver::TiltObserver(const std::string & type, double dt, bool asBackup, c
 : mc_observers::Observer(type, dt), estimator_(alpha_, beta_, gamma_), odometryManager_(observerName)
 {
   estimator_.setSamplingTime(dt_);
-  xk_.resize(9);
-  xk_ << so::Vector3::Zero(), so::Vector3::Zero(), so::Vector3(0, 0, 1); // so::Vector3(0.49198, 0.66976, 0.55622);
-  estimator_.setState(xk_, 0);
 
   asBackup_ = asBackup;
   observerName_ = observerName;
@@ -137,16 +134,6 @@ void TiltObserver::reset(const mc_control::MCController & ctl)
   velW_ = realRobot.velW();
   prevPoseW_ = sva::PTransformd::Identity();
   velW_ = sva::MotionVecd::Zero();
-
-  so::Vector3 tilt; // not exactly the tilt but Rt * ez, corresponding to the Tilt estimator's x1
-  if(imu.linearAcceleration().norm() < 1e-4) { tilt = ctl.robot(robot_).posW().rotation() * so::Vector3::UnitZ(); }
-  else
-  {
-    tilt = imu.linearAcceleration()
-           / imu.linearAcceleration().norm(); // we consider the acceleration as zero on the initialization
-  }
-
-  estimator_.initEstimator(so::Vector3::Zero(), tilt, tilt);
 
   const Eigen::Matrix3d cOri = (imu.X_b_s() * ctl.robot(robot_).bodyPosW(imu.parentBody())).rotation();
   so::Vector3 initX2 = cOri * so::Vector3::UnitZ(); // so::kine::rotationMatrixToRotationVector(cOri.transpose());
