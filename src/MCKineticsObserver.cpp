@@ -39,6 +39,8 @@ void MCKineticsObserver::configure(const mc_control::MCController & ctl, const m
 
   config("withDebugLogs", withDebugLogs_);
 
+  config("updateExtWrench", updateExtWrench_);
+
   /* configuration of the contacts manager */
 
   double contactDetectionPropThreshold = config("contactDetectionPropThreshold", 0.11);
@@ -111,7 +113,7 @@ void MCKineticsObserver::configure(const mc_control::MCController & ctl, const m
   config("withUnmodeledWrench", withUnmodeledWrench_);
   config("withGyroBias", withGyroBias_);
 
-  observer_.setWithUnmodeledWrench(withUnmodeledWrench_);
+  observer_.setWithUnmodeledWrench(withUnmodeledWrench_ | updateExtWrench_);
   observer_.setWithGyroBias(withGyroBias_);
   observer_.useFiniteDifferencesJacobians(config("withFiniteDifferences"));
   so::Vector dx(observer_.getStateSize());
@@ -661,6 +663,22 @@ void MCKineticsObserver::update(mc_rbdyn::Robot & robot)
 {
   robot.posW(X_0_fb_);
   robot.velW(v_fb_0_.vector());
+
+  if(updateExtWrench_)
+  {
+    so::kine::Kinematics fbFb; // "Zero" Kinematics
+    fbFb.setZero<so::Matrix3>(so::kine::Kinematics::Flags::all);
+
+    auto & inputRobot = my_robots_->robot("inputRobot");
+    so::kine::Kinematics worldFbPose =
+        conversions::kinematics::fromSva(inputRobot.posW(), so::kine::Kinematics::Flags::pose);
+
+    so::Vector6 fbExtWrench = observer_.getUnmodeledWrenchIn(fbFb);
+    sva::ForceVecd extWrenchFb(fbExtWrench.tail(3), fbExtWrench.head(3));
+
+    inputRobot.mbc().force[0] = extWrenchFb;
+    robot.mbc().force[0] = extWrenchFb;
+  }
 }
 
 void MCKineticsObserver::inputAdditionalWrench(const mc_rbdyn::Robot & inputRobot, const mc_rbdyn::Robot & measRobot)
@@ -1062,6 +1080,14 @@ void MCKineticsObserver::addToLogger(const mc_control::MCController & ctl,
 
   logger.addLogEntry(category + "_constants_mass", [this]() -> double { return observer_.getMass(); });
 
+  logger.addLogEntry(category + "_config_updateExtWrench", [this]() -> bool { return updateExtWrench_; });
+
+  logger.addLogEntry(category + "_debug_estimated_fbExtWrench",
+                     [this]() -> sva::ForceVecd
+                     {
+                       auto & inputRobot = my_robots_->robot("inputRobot");
+                       return inputRobot.mbc().force.at(0);
+                     });
   logger.addLogEntry(category + "_constants_forceThreshold", [this]() -> double { return contactDetectionThreshold_; });
   logger.addLogEntry(category + "_debug_estimationState",
                      [this]() -> std::string

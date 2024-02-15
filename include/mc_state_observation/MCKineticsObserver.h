@@ -394,6 +394,9 @@ private:
   // indicates if we want to estimate the bias on the gyrometer measurement within the Kinetics Observer.
   bool withGyroBias_ = true;
 
+  // indicates if the external wrench of the real robot must be updated with the estimated one
+  bool updateExtWrench_ = false;
+
   /* Kalman Filter's covariances */
 
   // initial covariance on the position estimate
