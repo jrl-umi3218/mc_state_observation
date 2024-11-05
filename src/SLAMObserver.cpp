@@ -269,7 +269,8 @@ void SLAMObserver::addToLogger(const mc_control::MCController &, mc_rtc::Logger 
       category + "_LeftFoot", [this]()
       { return (robots_->size() == 1 ? robots_->robot().surfacePose("LeftFoot") : sva::PTransformd::Identity()); });
   logger.addLogEntry(category + "_LeftFootCenter",
-                     [this]() {
+                     [this]()
+                     {
                        return (robots_->size() == 1 ? robots_->robot().surfacePose("LeftFootCenter")
                                                     : sva::PTransformd::Identity());
                      });
@@ -277,7 +278,8 @@ void SLAMObserver::addToLogger(const mc_control::MCController &, mc_rtc::Logger 
       category + "_RightFoot", [this]()
       { return (robots_->size() == 1 ? robots_->robot().surfacePose("RightFoot") : sva::PTransformd::Identity()); });
   logger.addLogEntry(category + "_RightFootCenter",
-                     [this]() {
+                     [this]()
+                     {
                        return (robots_->size() == 1 ? robots_->robot().surfacePose("RightFootCenter")
                                                     : sva::PTransformd::Identity());
                      });
