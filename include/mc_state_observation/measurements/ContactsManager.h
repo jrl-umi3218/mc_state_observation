@@ -1,11 +1,17 @@
 #pragma once
 #include <mc_control/MCController.h>
 #include <mc_state_observation/measurements/ContactWithSensor.h>
-
 #include <mc_state_observation/measurements/ContactsManagerConfiguration.h>
 
 namespace mc_state_observation::measurements
 {
+
+struct SchmittTrigger
+{
+  double lowerThreshold;
+  double upperThreshold;
+};
+
 /// @brief Structure that implements all the necessary functions to manage the map of contacts. Handles their detection
 /// and updates the list of the detected contacts, newly removed contacts, etc., to apply the appropriate functions on
 /// them.
@@ -179,6 +185,12 @@ public:
     return nullptr;
   }
 
+  /*! \brief Add the contacts manager to the logger
+   *
+   * @param category Category in which to log the contacts manager
+   */
+  void addToLogger(mc_rtc::Logger &, const std::string & category);
+
 private:
   /// @brief Initializer for a contacts detection based on contact surfaces
   /// @param ctl The controller
@@ -222,12 +234,13 @@ protected:
   // unordered map containing all the contacts
   std::unordered_map<std::string, ContactT> listContacts_;
   // Index generator, incremented everytime a new contact is created
-  int idx_ = 0;
+  unsigned idx_ = 0;
 
   // method used to detect the contacts
   ContactsDetection contactsDetectionMethod_ = Undefined;
   // threshold for the contacts detection
-  double contactDetectionThreshold_;
+  // double contactDetectionThreshold_;
+  SchmittTrigger schmittTrigger_;
 
   // list of surfaces used for contacts detection if @contactsDetection_ is
   // set to "Surfaces"

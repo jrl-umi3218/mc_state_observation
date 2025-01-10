@@ -2,6 +2,9 @@
 #include <variant>
 #include <vector>
 
+#include <mc_control/MCController.h>
+#include <state-observation/tools/definitions.hpp>
+
 namespace mc_state_observation::measurements
 {
 namespace internal
@@ -12,11 +15,16 @@ namespace internal
 template<class ConfigurationType>
 struct ContactsManagerConfigurationPrvt
 {
-  inline ContactsManagerConfigurationPrvt(const std::string & observerName) noexcept : observerName_(observerName) {}
-
-  inline ConfigurationType & contactDetectionThreshold(double contactDetectionThreshold) noexcept
+  inline ContactsManagerConfigurationPrvt(const std::string & observerName) noexcept : observerName_(observerName)
   {
-    contactDetectionThreshold_ = contactDetectionThreshold;
+    schmittLowerPropThreshold_ = 0.10;
+    schmittUpperPropThreshold_ = 0.15;
+  }
+
+  inline ConfigurationType & schmittTriggerPropThresholds(double lowerPropThreshold, double upperPropThreshold) noexcept
+  {
+    schmittLowerPropThreshold_ = lowerPropThreshold;
+    schmittUpperPropThreshold_ = upperPropThreshold;
     return static_cast<ConfigurationType &>(*this);
   }
   inline ConfigurationType & verbose(bool verbose) noexcept
@@ -27,7 +35,8 @@ struct ContactsManagerConfigurationPrvt
 
   std::string observerName_;
 
-  double contactDetectionThreshold_ = 0.11;
+  double schmittLowerPropThreshold_;
+  double schmittUpperPropThreshold_;
   bool verbose_ = true;
 };
 } // namespace internal

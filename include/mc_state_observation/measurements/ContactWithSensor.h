@@ -19,14 +19,14 @@ public:
   inline ContactWithSensor() = default;
   // constructor if the contact is not associated to a surface
   // its name will be the name of the force sensor
-  ContactWithSensor(int id, std::string_view forceSensorName)
+  ContactWithSensor(unsigned id, std::string_view forceSensorName)
   : Contact(id, forceSensorName), forceSensor_(forceSensorName)
   {
   }
 
   // constructor if the contact is associated to a surface
   // its name will be the name of the force sensor
-  ContactWithSensor(int id, std::string_view forceSensorName, std::string_view surfaceName)
+  ContactWithSensor(unsigned id, std::string_view forceSensorName, std::string_view surfaceName)
   : Contact(id, forceSensorName, surfaceName), forceSensor_(forceSensorName)
   {
   }

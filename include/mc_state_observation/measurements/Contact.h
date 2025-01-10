@@ -15,19 +15,22 @@ struct Contact
 protected:
   inline Contact() = default;
   // constructor if the contact is not associated to a surface
-  inline Contact(int id, std::string_view name) : id_(id), name_(name) {}
+  inline Contact(unsigned id, std::string_view name) : id_(id), name_(name) {}
   // constructor if the contact is associated to a surface
-  inline Contact(int id, std::string_view name, std::string_view surface) : Contact(id, name) { setSurface(surface); }
+  inline Contact(unsigned id, std::string_view name, std::string_view surface) : Contact(id, name)
+  {
+    setSurface(surface);
+  }
   inline bool operator<(const Contact & rhs) const noexcept { return (id() < rhs.id_); }
 
 public:
-  inline void resetContact() noexcept
+  virtual void resetContact() noexcept
   {
     wasAlreadySet_ = false;
     isSet_ = false;
   }
 
-  inline int id() const noexcept { return id_; }
+  inline unsigned id() const noexcept { return id_; }
   inline const std::string & name() const noexcept { return name_; }
   inline bool isSet() const noexcept { return isSet_; }
   inline bool wasAlreadySet() const noexcept { return wasAlreadySet_; }
@@ -42,7 +45,7 @@ public:
   inline void wasAlreadySet(bool wasAlreadySet) { wasAlreadySet_ = wasAlreadySet; }
 
 protected:
-  int id_;
+  unsigned id_;
   std::string name_;
 
   bool isSet_ = false;
