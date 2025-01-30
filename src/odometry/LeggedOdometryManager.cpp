@@ -341,10 +341,13 @@ void LeggedOdometryManager::replaceRobotPose(const sva::PTransformd & newPose, b
 
   for(auto & contact : maintainedContacts())
   {
+    // compute the pose of the reference frame of the contact in the frame of the floating base.
     so::kine::Kinematics fbWorldRefKine = prevPoseKine.getInverse() * contact->worldRefKine_;
     so::kine::Kinematics fbWorldRefKineBeforeCorrection =
         prevPoseKine.getInverse() * contact->worldRefKineBeforeCorrection_;
 
+    // compute the new pose of the reference frame of the contact in the frame of the world from the new floating base
+    // pose.
     contact->worldRefKine_ = newPoseKine * fbWorldRefKine;
     contact->worldRefKineBeforeCorrection_ = newPoseKine * fbWorldRefKineBeforeCorrection;
 
