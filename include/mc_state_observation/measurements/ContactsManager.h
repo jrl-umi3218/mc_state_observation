@@ -51,9 +51,9 @@ protected:
   /// @param onAddedContact function to call when a contact is added to the manager
   /// @return ContactT &
   template<typename OnAddedContact = std::nullptr_t>
-  inline ContactT & addContactToManager(const std::string & forceSensorName,
-                                        const std::string & surface,
-                                        OnAddedContact onAddedContact = nullptr);
+  ContactT & addContactToManager(const std::string & forceSensorName,
+                                 const std::string & surface,
+                                 OnAddedContact onAddedContact = nullptr);
   /// @brief Insert a contact to the map of contacts.
   /// @details Version for contacts that are associated to a force sensor but to no surface.
   /// @param name The name of the contact (= name of the sensor)
@@ -130,7 +130,6 @@ public:
   /// set, removed, etc., and execute actions accordingly
   /// @param ctl Controller
   /// @param robotName Name of the robot
-  /// @param onNewContact Function to call on a newly detected contact
   /// @param onNewContact Function to call on a newly detected contact
   /// @param onMaintainedContact Function to call on a contact maintainted
   /// since the last iteration
@@ -230,9 +229,9 @@ private:
                            OnAddedContact onAddedContact = nullptr);
 
 protected:
-  // map of contacts used by the manager.
-  // unordered map containing all the contacts
+  // map of contacts used by the manager. unordered map containing all the contacts, currently set or not.
   std::unordered_map<std::string, ContactT> listContacts_;
+
   // Index generator, incremented everytime a new contact is created
   unsigned idx_ = 0;
 

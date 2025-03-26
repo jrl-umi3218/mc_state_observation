@@ -154,7 +154,7 @@ void TiltObserver::reset(const mc_control::MCController & ctl)
 
   initX_ = Eigen::RowVectorXd(9);
   initX_ << so::Vector3::Zero(), initX2, initX2;
-  estimator_.initEstimator(so::Vector3::Zero(), initX2, initX2);
+  estimator_.initEstimator(initX_);
 
   /* Initialization of the variables */
   worldAnchorKine_ctl_ = stateObservation::kine::Kinematics::zeroKinematics(so::kine::Kinematics::Flags::position

@@ -202,7 +202,7 @@ void ContactsManager<ContactT>::findContactsFromSolver(const mc_control::MCContr
   {
     ContactT & contactWS =
         addContactToManager(measRobot.frame(surfaceName).forceSensor().name(), surfaceName, onAddedContact);
-    contactWS.forceNorm(measRobot.frame(surfaceName).wrench().force().norm());
+    contactWS.forceNorm(measRobot.frame(surfaceName).forceSensor().wrenchWithoutGravity(measRobot).force().norm());
     if(contactWS.forceNorm() > schmittTrigger_.lowerThreshold)
     {
       if(contactWS.wasAlreadySet())
