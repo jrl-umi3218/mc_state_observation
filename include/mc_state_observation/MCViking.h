@@ -4,12 +4,11 @@
 
 #include <forward_list>
 #include <mc_state_observation/odometry/LeggedOdometryManager.h>
-#include <state-observation/observer/vanyt-estimator.hpp>
+#include <state-observation/observer/viking.hpp>
 
 namespace mc_state_observation
 {
-
-struct MCVanyte : public mc_observers::Observer
+struct MCViking : public mc_observers::Observer
 {
   /// @brief Structure containing information about delayed orientation measurements.
   struct DelayedOriMeasurement
@@ -27,7 +26,7 @@ public:
   /// @brief Constructor for the MCVanyte.
   /// @details The parameters asBackup is given only if the Vanyte is used as a backup by the
   /// Kinetics Observer
-  MCVanyte(const std::string & type, double dt, bool asBackup = false);
+  MCViking(const std::string & type, double dt, bool asBackup = false);
 
   void configure(const mc_control::MCController & ctl, const mc_rtc::Configuration &) override;
 
@@ -72,19 +71,21 @@ public:
   const stateObservation::kine::Kinematics backupFb(
       boost::circular_buffer<stateObservation::kine::Kinematics> * koBackupFbKinematics);
 
-  /// @brief Re-estimates the current state using a delayed orientation measurement.
-  /// @details Let us denote k the time on which the orientation measurement started to be computed, but is still not
-  /// available. We replay the estimation at time k using the buffered state and measurements, this time using the newly
-  /// available orientation measurement. We then apply the transformation between the pose at time k+1 and the current
-  /// iteration.
-  /// @param ctl The delayed orientation measurement.
-  /// @param delayedOriMeas The delayed orientation measurement.
-  /// @param delayIters Number of iterations corresponding to the measurement delay.
-  /// @param delayedOriGain The gain associated to the delayed orientation within the filter.
-  void delayedOriMeasurementHandler(const mc_control::MCController & ctl,
-                                    const stateObservation::Matrix3 & delayedOriMeas,
-                                    unsigned long delayIters,
-                                    double delayedOriGain);
+  // /// @brief Re-estimates the current state using a delayed orientation measurement.
+  // /// @details Let us denote k the time on which the orientation measurement started to be computed, but is still not
+  // /// available. We replay the estimation at time k using the buffered state and measurements, this time using the
+  // newly
+  // /// available orientation measurement. We then apply the transformation between the pose at time k+1 and the
+  // current
+  // /// iteration.
+  // /// @param ctl The delayed orientation measurement.
+  // /// @param delayedOriMeas The delayed orientation measurement.
+  // /// @param delayIters Number of iterations corresponding to the measurement delay.
+  // /// @param delayedOriGain The gain associated to the delayed orientation within the filter.
+  // void delayedOriMeasurementHandler(const mc_control::MCController & ctl,
+  //                                   const stateObservation::Matrix3 & delayedOriMeas,
+  //                                   unsigned long delayIters,
+  //                                   double delayedOriGain);
 
   inline const odometry::LeggedOdometryManager & odometryManager() { return odometryManager_; }
 
@@ -171,7 +172,7 @@ protected:
   // function used to compute the anchor frame of the robot in the world.
   std::string anchorFrameFunction_;
   // instance of the Tilt Estimator for humanoid robots.
-  stateObservation::VanytEstimator estimator_;
+  stateObservation::Viking estimator_;
 
   /* kinematics used for computation */
   // kinematics of the IMU in the floating base after the encoders update

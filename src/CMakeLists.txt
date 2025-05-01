@@ -57,7 +57,7 @@ add_so_observer(AttitudeObserver)
 add_so_observer(NaiveOdometry)
 add_so_observer(TiltObserver)
 add_so_observer(MCWaiko)
-add_so_observer(MCVanyte)
+add_so_observer(MCViking)
 add_so_observer(MocapVisualizer)
 
 add_kineticsobserver()

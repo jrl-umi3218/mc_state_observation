@@ -1,8 +1,7 @@
 #include <mc_observers/ObserverMacros.h>
 
 #include "mc_state_observation/measurements/measurements.h"
-#include "mc_state_observation/odometry/LeggedOdometryManager.h"
-#include <mc_state_observation/MCVanyte.h>
+#include <mc_state_observation/MCViking.h>
 #include <mc_state_observation/gui_helpers.h>
 #include <state-observation/tools/rigid-body-kinematics.hpp>
 
@@ -14,22 +13,16 @@ namespace so = stateObservation;
 using OdometryType = measurements::OdometryType;
 using LoContactsManager = odometry::LeggedOdometryManager::ContactsManager;
 
-MCVanyte::MCVanyte(const std::string & type, double dt, bool asBackup)
-: mc_observers::Observer(type, dt), estimator_(alpha_, beta_, 1 / (2 * M_PI), dt), odometryManager_(dt)
+MCViking::MCViking(const std::string & type, double dt, bool asBackup)
+: mc_observers::Observer(type, dt), estimator_(dt, alpha_, beta_, 1 / (2 * M_PI), 1), odometryManager_(dt)
 {
   asBackup_ = asBackup;
 }
 
-void MCVanyte::configure(const mc_control::MCController & ctl, const mc_rtc::Configuration & config)
+void MCViking::configure(const mc_control::MCController & ctl, const mc_rtc::Configuration & config)
 {
   robot_ = config("robot", ctl.robot().name());
   imuSensor_ = config("imuSensor", ctl.robot().bodySensor().name());
-
-  if(ctl.realRobot(robot_).hasBodySensor("VisualGyroSensor"))
-  {
-    unsigned long delayedOriBufferCapacity = static_cast<unsigned long>(10 / ctl.timeStep);
-    estimator_.setBufferCapacity(delayedOriBufferCapacity);
-  }
 
   config("maxAnchorFrameDiscontinuity", maxAnchorFrameDiscontinuity_);
   config("updateRobot", updateRobot_);
@@ -149,7 +142,7 @@ void MCVanyte::configure(const mc_control::MCController & ctl, const mc_rtc::Con
   }
 }
 
-void MCVanyte::reset(const mc_control::MCController & ctl)
+void MCViking::reset(const mc_control::MCController & ctl)
 {
   const auto & robot = ctl.robot(robot_);
   const auto & realRobot = ctl.realRobot(robot_);
@@ -182,9 +175,10 @@ void MCVanyte::reset(const mc_control::MCController & ctl)
   const Eigen::Matrix3d cOri = (imu.X_b_s() * realRobot.bodyPosW(imu.parentBody())).rotation();
   so::Vector3 initX2 = initWorldImuKine.orientation.toMatrix3().transpose() * so::Vector3::UnitZ();
 
-  estimator_.initEstimator(initWorldImuKine.position(), so::Vector3::Zero(), initX2,
+  estimator_.initEstimator(so::Vector3::Zero(), initX2, initWorldImuKine.position(),
                            initWorldImuKine.orientation.toVector4());
 
+  estimator_.pushInput(stateObservation::InputViking());
   anchorFrameJumped_ = false;
   iter_ = 0;
   imuVelC_ = sva::MotionVecd::Zero();
@@ -193,7 +187,7 @@ void MCVanyte::reset(const mc_control::MCController & ctl)
   odometryManager_.reset();
 }
 
-bool MCVanyte::run(const mc_control::MCController & ctl)
+bool MCViking::run(const mc_control::MCController & ctl)
 {
   const auto & realRobot = ctl.realRobot(robot_);
   auto & logger = (const_cast<mc_control::MCController &>(ctl)).logger();
@@ -217,7 +211,7 @@ bool MCVanyte::run(const mc_control::MCController & ctl)
   return true;
 }
 
-void MCVanyte::updateNecessaryFramesOdom(const mc_control::MCController & ctl, const mc_rbdyn::Robot & odomRobot)
+void MCViking::updateNecessaryFramesOdom(const mc_control::MCController & ctl, const mc_rbdyn::Robot & odomRobot)
 
 {
   // pose of the floating base' frame in the world for the odometry robot
@@ -248,19 +242,19 @@ void MCVanyte::updateNecessaryFramesOdom(const mc_control::MCController & ctl, c
   if(odometryManager_.anchorPointMethodChanged_) { imuAnchorKine_.linVel().setZero(); }
 }
 
-void MCVanyte::runTiltEstimator(const mc_control::MCController & ctl, const mc_rbdyn::Robot & odomRobot)
+void MCViking::runTiltEstimator(const mc_control::MCController & ctl, const mc_rbdyn::Robot & odomRobot)
 {
   if(ctl.realRobot(robot_).hasBodySensor("VisualGyroSensor"))
   {
     auto & logger = (const_cast<mc_control::MCController &>(ctl)).logger();
 
-    removeDelayedOriMeasLogs(logger);
-    if(ctl.datastore().has("VisualGyroSensorDelay"))
-    {
-      const mc_rbdyn::BodySensor & visualGyro = ctl.realRobot(robot_).bodySensor("VisualGyroSensor");
-      delayedOriMeasurementHandler(ctl, visualGyro.orientation().toRotationMatrix(),
-                                   ctl.datastore().get<unsigned long>("VisualGyroSensorDelay"), mu_gyroscope_);
-    }
+    // removeDelayedOriMeasLogs(logger);
+    // if(ctl.datastore().has("VisualGyroSensorDelay"))
+    // {
+    //   const mc_rbdyn::BodySensor & visualGyro = ctl.realRobot(robot_).bodySensor("VisualGyroSensor");
+    //   delayedOriMeasurementHandler(ctl, visualGyro.orientation().toRotationMatrix(),
+    //                                ctl.datastore().get<unsigned long>("VisualGyroSensorDelay"), mu_gyroscope_);
+    // }
   }
 
   updateNecessaryFramesOdom(ctl, odomRobot);
@@ -317,6 +311,7 @@ void MCVanyte::runTiltEstimator(const mc_control::MCController & ctl, const mc_r
     measuredOri_ = worldImuKine_fromContactRef.orientation.toMatrix3();
 
     estimator_.addOrientationMeasurement(measuredOri_, mu_contacts_ * mContact->lambda());
+
     estimator_.addContactPosMeasurement(worldContactRefKine.position(), imuContactPos, lambda_contacts_,
                                         gamma_contacts_);
   }
@@ -349,7 +344,7 @@ void MCVanyte::runTiltEstimator(const mc_control::MCController & ctl, const mc_r
   backupFbKinematics_.push_back(conversions::kinematics::fromSva(poseW_, so::kine::Kinematics::Flags::pose));
 }
 
-void MCVanyte::updatePoseAndVel(const so::Vector3 & localWorldImuLinVel, const so::Vector3 & localWorldImuAngVel)
+void MCViking::updatePoseAndVel(const so::Vector3 & localWorldImuLinVel, const so::Vector3 & localWorldImuAngVel)
 {
   correctedWorldFbKine_.position = poseW_.translation();
   correctedWorldFbKine_.orientation = R_0_fb_; // which is equal to poseW_.rotation().transpose();
@@ -373,7 +368,7 @@ void MCVanyte::updatePoseAndVel(const so::Vector3 & localWorldImuLinVel, const s
   odometryManager_.replaceRobotVelocity(velW_);
 }
 
-void MCVanyte::update(mc_control::MCController & ctl)
+void MCViking::update(mc_control::MCController & ctl)
 {
   auto & realRobot = ctl.realRobot(robot_);
   if(updateRobot_)
@@ -395,13 +390,13 @@ void MCVanyte::update(mc_control::MCController & ctl)
   }
 }
 
-void MCVanyte::update(mc_rbdyn::Robot & robot)
+void MCViking::update(mc_rbdyn::Robot & robot)
 {
   robot.posW(poseW_);
   robot.velW(velW_);
 }
 
-const so::kine::Kinematics MCVanyte::backupFb(boost::circular_buffer<so::kine::Kinematics> * koBackupFbKinematics)
+const so::kine::Kinematics MCViking::backupFb(boost::circular_buffer<so::kine::Kinematics> * koBackupFbKinematics)
 {
   // new initial pose of the floating base
   so::kine::Kinematics worldResetKine = *(koBackupFbKinematics->begin());
@@ -434,51 +429,53 @@ const so::kine::Kinematics MCVanyte::backupFb(boost::circular_buffer<so::kine::K
   return koBackupFbKinematics->back();
 }
 
-void MCVanyte::delayedOriMeasurementHandler(const mc_control::MCController & ctl,
-                                            const so::Matrix3 & meas,
-                                            unsigned long delay,
-                                            double gain)
-{
-  const auto & iterationsBuffer = estimator_.getIterationsBuffer();
-  // Let us denote k the time on which the orientation measurement started to be computed, but is still not available.
-  // We replay the estimation at time k using the buffered state and measurements, this time using the newly available
-  // orientation measurement. We then apply the transformation between the time k+1 and the current iteration.
+// void MCViking::delayedOriMeasurementHandler(const mc_control::MCController & ctl,
+//                                             const so::Matrix3 & meas,
+//                                             unsigned long delay,
+//                                             double gain)
+// {
+//   const auto & iterationsBuffer = estimator_.getIterationsBuffer();
+//   // Let us denote k the time on which the orientation measurement started to be computed, but is still not
+//   available.
+//   // We replay the estimation at time k using the buffered state and measurements, this time using the newly
+//   available
+//   // orientation measurement. We then apply the transformation between the time k+1 and the current iteration.
 
-  delayedOriMeas_.meas_ = meas;
-  delayedOriMeas_.gain_ = gain;
-  delayedOriMeas_.updatedPoseWithoutMeas_ = iterationsBuffer.at(delay - 1).updatedPose_;
+//   delayedOriMeas_.meas_ = meas;
+//   delayedOriMeas_.gain_ = gain;
+//   delayedOriMeas_.updatedPoseWithoutMeas_ = iterationsBuffer.at(delay - 1).finalPose_;
 
-  mc_rtc::log::info("Received an orientation measurement with a delay of " + std::to_string(delay) + " iterations");
-  if(iterationsBuffer.empty())
-  {
-    mc_rtc::log::warning("A delayed measurement was received although the estimation just started. Please make sure "
-                         "that you pass a delayed orientation measurement. The measurement will be ignored.");
-    return;
-  }
-  if(delay > iterationsBuffer.size() || iterationsBuffer.size() == 0)
-  {
-    mc_rtc::log::warning("The orientation measurement is too old, the measurement will be ignored.");
-    return;
-  }
+//   mc_rtc::log::info("Received an orientation measurement with a delay of " + std::to_string(delay) + " iterations");
+//   if(iterationsBuffer.empty())
+//   {
+//     mc_rtc::log::warning("A delayed measurement was received although the estimation just started. Please make sure "
+//                          "that you pass a delayed orientation measurement. The measurement will be ignored.");
+//     return;
+//   }
+//   if(delay > iterationsBuffer.size() || iterationsBuffer.size() == 0)
+//   {
+//     mc_rtc::log::warning("The orientation measurement is too old, the measurement will be ignored.");
+//     return;
+//   }
 
-  // we replay the estimation made by the filter but this time with the orientation measurement.
-  so::Vector replayedWorldImuEstWithOri = estimator_.replayIterationsWithDelayedOri(delay, meas, gain);
-  so::kine::Kinematics replayedWorldImuKineEst(replayedWorldImuEstWithOri.tail(7), so::kine::Kinematics::Flags::pose);
+//   // we replay the estimation made by the filter but this time with the orientation measurement.
+//   so::Vector replayedWorldImuEstWithOri = estimator_.replayIterationsWithDelayedOri(delay, meas, gain);
+//   so::kine::Kinematics replayedWorldImuKineEst(replayedWorldImuEstWithOri.tail(7), so::kine::Kinematics::Flags::pose);
 
-  // we get the new kinematics of the floating base in the world frame from the ones of the IMU
-  so::Matrix3 replayedWorldFbOri =
-      replayedWorldImuKineEst.orientation.toMatrix3() * fbImuKine_.orientation.toMatrix3().transpose();
-  so::Vector3 replayedWorldFbPos = replayedWorldImuKineEst.position() - replayedWorldFbOri * fbImuKine_.position();
+//   // we get the new kinematics of the floating base in the world frame from the ones of the IMU
+//   so::Matrix3 replayedWorldFbOri =
+//       replayedWorldImuKineEst.orientation.toMatrix3() * fbImuKine_.orientation.toMatrix3().transpose();
+//   so::Vector3 replayedWorldFbPos = replayedWorldImuKineEst.position() - replayedWorldFbOri * fbImuKine_.position();
 
-  sva::PTransformd newWorldFbPose_(replayedWorldFbOri.transpose(), replayedWorldFbPos);
-  odometryManager_.replaceRobotPose(newWorldFbPose_);
+//   sva::PTransformd newWorldFbPose_(replayedWorldFbOri.transpose(), replayedWorldFbPos);
+//   odometryManager_.replaceRobotPose(newWorldFbPose_);
 
-  auto & logger = (const_cast<mc_control::MCController &>(ctl)).logger();
-  delayedOriMeas_.updatedPoseWithMeas_ = iterationsBuffer.at(delay - 1).updatedPose_;
-  addDelayedOriMeasLogs(logger, name());
-}
+//   auto & logger = (const_cast<mc_control::MCController &>(ctl)).logger();
+//   delayedOriMeas_.updatedPoseWithMeas_ = iterationsBuffer.at(delay - 1).finalPose_;
+//   addDelayedOriMeasLogs(logger, name());
+// }
 
-void MCVanyte::setOdometryType(OdometryType newOdometryType)
+void MCViking::setOdometryType(OdometryType newOdometryType)
 {
   if((newOdometryType != measurements::OdometryType::Odometry6d)
      && (newOdometryType != measurements::OdometryType::Flat))
@@ -489,7 +486,7 @@ void MCVanyte::setOdometryType(OdometryType newOdometryType)
   odometryManager_.setOdometryType(newOdometryType);
 }
 
-void MCVanyte::addDelayedOriMeasLogs(mc_rtc::Logger & logger, const std::string & category)
+void MCViking::addDelayedOriMeasLogs(mc_rtc::Logger & logger, const std::string & category)
 {
   logger.addLogEntry(category + "_delayedOriMeas_" + "meas", &delayedOriMeas_,
                      [this]() -> Eigen::Quaterniond { return Eigen::Quaterniond(delayedOriMeas_.meas_).inverse(); });
@@ -504,14 +501,14 @@ void MCVanyte::addDelayedOriMeasLogs(mc_rtc::Logger & logger, const std::string 
                                        category + "_delayedOriMeas_" + "updatedPoseWithMeas");
 }
 
-void MCVanyte::removeDelayedOriMeasLogs(mc_rtc::Logger & logger)
+void MCViking::removeDelayedOriMeasLogs(mc_rtc::Logger & logger)
 {
   logger.removeLogEntries(&delayedOriMeas_);
   conversions::kinematics::removeFromLogger(logger, delayedOriMeas_.updatedPoseWithMeas_);
   conversions::kinematics::removeFromLogger(logger, delayedOriMeas_.updatedPoseWithoutMeas_);
 }
 
-void MCVanyte::addToLogger(const mc_control::MCController & ctl, mc_rtc::Logger & logger, const std::string & category)
+void MCViking::addToLogger(const mc_control::MCController & ctl, mc_rtc::Logger & logger, const std::string & category)
 {
   category_ = category;
 
@@ -523,14 +520,14 @@ void MCVanyte::addToLogger(const mc_control::MCController & ctl, mc_rtc::Logger 
   logger.addLogEntry(category + "_debug_measuredOri_",
                      [this]() -> Eigen::Quaterniond { return measuredOri_.toQuaternion().inverse(); });
 
-  logger.addLogEntry(category + "_debug_corrections_oriCorrection_",
-                     [this]() -> const so::Vector3 & { return estimator_.getOriCorrection(); });
-  logger.addLogEntry(category + "_debug_corrections_oriCorrFromOriMeas_",
-                     [this]() -> const so::Vector3 & { return estimator_.getOriCorrFromOriMeas(); });
-  logger.addLogEntry(category + "_debug_corrections_posCorrFromContactPos_",
-                     [this]() -> const so::Vector3 & { return estimator_.getPosCorrectionFromContactPos(); });
-  logger.addLogEntry(category + "_debug_corrections_oriCorrFromContactPos_",
-                     [this]() -> const so::Vector3 & { return estimator_.geOriCorrectionFromContactPos(); });
+  // logger.addLogEntry(category + "_debug_corrections_oriCorrection_",
+  //                    [this]() -> const so::Vector3 & { return estimator_.getOriCorrection(); });
+  // logger.addLogEntry(category + "_debug_corrections_oriCorrFromOriMeas_",
+  //                    [this]() -> const so::Vector3 & { return estimator_.getOriCorrFromOriMeas(); });
+  // logger.addLogEntry(category + "_debug_corrections_posCorrFromContactPos_",
+  //                    [this]() -> const so::Vector3 & { return estimator_.getPosCorrectionFromContactPos(); });
+  // logger.addLogEntry(category + "_debug_corrections_oriCorrFromContactPos_",
+  //                    [this]() -> const so::Vector3 & { return estimator_.geOriCorrectionFromContactPos(); });
 
   logger.addLogEntry(category + "_estimatedState_x2prime",
                      [this]() -> so::Vector3 { return xk_.segment(3, 3).normalized(); });
@@ -776,7 +773,7 @@ void MCVanyte::addToLogger(const mc_control::MCController & ctl, mc_rtc::Logger 
   conversions::kinematics::addToLogger(logger, correctedWorldImuKine_, category + "_debug_correctedWorldImuKine_");
 }
 
-void MCVanyte::removeFromLogger(mc_rtc::Logger & logger, const std::string & category)
+void MCViking::removeFromLogger(mc_rtc::Logger & logger, const std::string & category)
 {
   logger.removeLogEntry(category + "_imuVelC");
   logger.removeLogEntry(category + "_imuPoseC");
@@ -784,11 +781,11 @@ void MCVanyte::removeFromLogger(mc_rtc::Logger & logger, const std::string & cat
   logger.removeLogEntry(category + "_controlAnchorFrame");
 }
 
-void MCVanyte::addToGUI(const mc_control::MCController &, mc_rtc::gui::StateBuilder &, const std::vector<std::string> &)
+void MCViking::addToGUI(const mc_control::MCController &, mc_rtc::gui::StateBuilder &, const std::vector<std::string> &)
 {
   using namespace mc_state_observation::gui;
   // gui.addElement(category, make_input_element("alpha", alpha_), make_input_element("beta", beta_));
 }
 
 } // namespace mc_state_observation
-EXPORT_OBSERVER_MODULE("MCVanyte", mc_state_observation::MCVanyte)
+EXPORT_OBSERVER_MODULE("MCViking", mc_state_observation::MCViking)
