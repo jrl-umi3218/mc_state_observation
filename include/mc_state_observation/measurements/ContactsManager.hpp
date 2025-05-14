@@ -199,9 +199,9 @@ void ContactsManager<ContactT>::findContactsFromSolver(const mc_control::MCContr
     }
   };
 
-  for(const auto & contact : ctl.solver().contacts())
+  for(const auto & c : ctl.solver().contacts())
   {
-
+    const auto & contact = *c;
     const auto & r1 = ctl.robots().robot(contact.r1Index());
     const auto & r2 = ctl.robots().robot(contact.r2Index());
     if(r1.name() == measRobot.name())
