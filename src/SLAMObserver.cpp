@@ -270,7 +270,8 @@ void SLAMObserver::addToLogger(const mc_control::MCController &, mc_rtc::Logger 
       category + "_LeftFoot", [this]()
       { return (robots_->size() == 1 ? robots_->robot().surfacePose("LeftFoot") : sva::PTransformd::Identity()); });
   logger.addLogEntry(category + "_LeftFootCenter",
-                     [this]() {
+                     [this]()
+                     {
                        return (robots_->size() == 1 ? robots_->robot().surfacePose("LeftFootCenter")
                                                     : sva::PTransformd::Identity());
                      });
@@ -278,7 +279,8 @@ void SLAMObserver::addToLogger(const mc_control::MCController &, mc_rtc::Logger 
       category + "_RightFoot", [this]()
       { return (robots_->size() == 1 ? robots_->robot().surfacePose("RightFoot") : sva::PTransformd::Identity()); });
   logger.addLogEntry(category + "_RightFootCenter",
-                     [this]() {
+                     [this]()
+                     {
                        return (robots_->size() == 1 ? robots_->robot().surfacePose("RightFootCenter")
                                                     : sva::PTransformd::Identity());
                      });
@@ -310,33 +312,32 @@ void SLAMObserver::addToGUI(const mc_control::MCController & ctl,
                             mc_rtc::gui::StateBuilder & gui,
                             const std::vector<std::string> & category)
 {
-  gui.addElement(category, mc_rtc::gui::Transform("X_S_Ground", [this]() { return X_Slam_Ground_; }),
-                 mc_rtc::gui::Button("Initialize",
-                                     [this, &ctl]()
-                                     {
-                                       if(!isInitialized_)
-                                       {
-                                         isInitialized_ = true;
-                                         const auto & real_robot = ctl.realRobot(robot_);
-                                         const auto & X_0_Camera = real_robot.bodyPosW(camera_);
-                                         X_0_Slam_ = X_Slam_Estimated_Camera_.inv() * X_0_Camera;
-                                         filter_->reset();
-                                       }
-                                     }),
-                 mc_rtc::gui::Transform("X_0_Slam", [this]() { return X_0_Slam_; }),
-                 mc_rtc::gui::ArrayLabel("X_Slam_Camera", {"r", "p", "y", "x", "y", "z"},
-                                         [this]()
-                                         {
-                                           Eigen::VectorXd ret(6);
-                                           sva::PTransformd X_Slam_Camera = X_0_Estimated_camera_ * X_0_Slam_.inv();
-                                           ret << mc_rbdyn::rpyFromMat(X_Slam_Camera.rotation()),
-                                               X_Slam_Camera.translation();
-                                           return ret;
-                                         }),
-                 mc_rtc::gui::Label("Is Observer initialized?", [this]() { return (isInitialized_ ? "Yes" : "No"); }),
-                 mc_rtc::gui::Button("Delete initialization", [this]() { isInitialized_ = false; }),
-                 mc_rtc::gui::Checkbox(
-                     "Enable plots", [this]() { return plotsEnabled_; }, [this, &gui]() { togglePlots(gui); }));
+  gui.addElement(
+      category, mc_rtc::gui::Transform("X_S_Ground", [this]() { return X_Slam_Ground_; }),
+      mc_rtc::gui::Button("Initialize",
+                          [this, &ctl]()
+                          {
+                            if(!isInitialized_)
+                            {
+                              isInitialized_ = true;
+                              const auto & real_robot = ctl.realRobot(robot_);
+                              const auto & X_0_Camera = real_robot.bodyPosW(camera_);
+                              X_0_Slam_ = X_Slam_Estimated_Camera_.inv() * X_0_Camera;
+                              filter_->reset();
+                            }
+                          }),
+      mc_rtc::gui::Transform("X_0_Slam", [this]() { return X_0_Slam_; }),
+      mc_rtc::gui::ArrayLabel("X_Slam_Camera", {"r", "p", "y", "x", "y", "z"},
+                              [this]()
+                              {
+                                Eigen::VectorXd ret(6);
+                                sva::PTransformd X_Slam_Camera = X_0_Estimated_camera_ * X_0_Slam_.inv();
+                                ret << mc_rbdyn::rpyFromMat(X_Slam_Camera.rotation()), X_Slam_Camera.translation();
+                                return ret;
+                              }),
+      mc_rtc::gui::Label("Is Observer initialized?", [this]() { return (isInitialized_ ? "Yes" : "No"); }),
+      mc_rtc::gui::Button("Delete initialization", [this]() { isInitialized_ = false; }),
+      mc_rtc::gui::Checkbox("Enable plots", [this]() { return plotsEnabled_; }, [this, &gui]() { togglePlots(gui); }));
 
   std::vector<std::string> categoryFilter = category;
   categoryFilter.push_back("Filter");
@@ -349,8 +350,7 @@ void SLAMObserver::addToGUI(const mc_control::MCController & ctl,
                                      }),
                  mc_rtc::gui::Label("Apply filter:", [this]() { return (isFiltered_ ? "yes" : "no"); }),
                  mc_rtc::gui::ArrayInput(
-                     "Filter config", {"m", "d", "n"},
-                     [this]()
+                     "Filter config", {"m", "d", "n"}, [this]()
                      { return Eigen::Vector3d(filter_->config().m, filter_->config().s, filter_->config().n); },
                      [this](const Eigen::Vector3d & v)
                      {

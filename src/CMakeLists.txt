@@ -7,9 +7,7 @@ set(mc_state_observation_HDR
 add_library(mc_state_observation SHARED ${mc_state_observation_SRC}
                                         ${mc_state_observation_HDR})
 
-target_link_libraries(
-  mc_state_observation PUBLIC SpaceVecAlg::SpaceVecAlg
-                              state-observation::state-observation)
+target_link_libraries(mc_state_observation PUBLIC mc_rtc::mc_control)
 install(
   TARGETS mc_state_observation
   EXPORT "${TARGETS_EXPORT_NAME}"
