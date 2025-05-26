@@ -37,13 +37,15 @@ public:
   }
 
   inline void lambda(double lambda) { lambda_ = lambda; }
+  inline void forceRatio(double forceRatio) { forceRatio_ = forceRatio; }
   inline void resetLifeTime() { lifeTime_ = 0.0; }
   inline void lifeTimeIncrement(double dt) { lifeTime_ += dt; }
-  inline void weightingCoeff(double weightingCoeff) { weightingCoeff_ = weightingCoeff; }
+  inline void correctionWeightingCoeff(double weightingCoeff) { correctionWeightingCoeff_ = weightingCoeff; }
 
   inline double lambda() const noexcept { return lambda_; }
+  inline double forceRatio() const noexcept { return forceRatio_; }
   inline double lifeTime() const noexcept { return lifeTime_; }
-  inline double weightingCoeff() const noexcept { return weightingCoeff_; }
+  inline double correctionWeightingCoeff() const noexcept { return correctionWeightingCoeff_; }
 
 public:
   // reference of the contact in the world
@@ -66,12 +68,14 @@ public:
   stateObservation::kine::Kinematics contactSensorPose_;
 
 protected:
+  // ratio between the vertical force and the force norm.
+  double forceRatio_;
   // weighing coefficient for the anchor point computation
   double lambda_;
   // time ellapsed since the creation of the contact.
   double lifeTime_;
   // defines the weighting of the contribution of the newly "measured" reference pose of the contact and the current one
-  double weightingCoeff_;
+  double correctionWeightingCoeff_;
 };
 
 /// @brief Structure that implements all the necessary functions to perform legged odometry.
@@ -282,18 +286,18 @@ protected:
   {
   protected:
     // comparison function that sorts the contacts based on their measured force.
-    struct sortByForce
+    struct sortByForceRatio
     {
       inline bool operator()(const LoContactWithSensor & contact1, const LoContactWithSensor & contact2) const noexcept
       {
-        return (contact1.forceNorm() < contact2.forceNorm());
+        return (contact1.forceRatio() < contact2.forceRatio());
       }
     };
 
   public:
     // list of contacts used for the orientation odometry. At most two contacts can be used for this estimation, and
     // contacts at hands are not considered. The contacts with the highest measured force are used.
-    std::set<std::reference_wrapper<LoContactWithSensor>, sortByForce> oriOdometryContacts_;
+    std::set<std::reference_wrapper<LoContactWithSensor>, sortByForceRatio> oriOdometryContacts_;
   };
 
 public:

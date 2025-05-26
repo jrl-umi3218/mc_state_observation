@@ -31,13 +31,13 @@ public:
   {
   }
 
-  inline void forceNorm(double forceNorm) { forceNorm_ = forceNorm; }
+  inline void forceMeas(const Eigen::Vector3d & forceMeas) { forceMeas_ = forceMeas; }
 
   inline const std::string & forceSensor() const noexcept { return forceSensor_; }
-  inline double forceNorm() const noexcept { return forceNorm_; }
+  inline const Eigen::Vector3d & forceMeas() const noexcept { return forceMeas_; }
 
 protected:
   std::string forceSensor_;
-  double forceNorm_ = 0.0;
+  Eigen::Vector3d forceMeas_;
 };
 } // namespace mc_state_observation::measurements

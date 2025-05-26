@@ -137,7 +137,7 @@ void LeggedOdometryManager::updateFbAndContacts(const mc_control::MCController &
 
   const auto & robot = ctl.robot(robotName_);
 
-  double sumForces_orientation = 0.0;
+  double sumForceRatios_orientation = 0.0;
 
   // indicates if the orientation can be updated from the current contacts or not
   bool oriUpdatable = false;
@@ -148,7 +148,7 @@ void LeggedOdometryManager::updateFbAndContacts(const mc_control::MCController &
     const stateObservation::Matrix3 & tilt = *(params.tiltOrAttitudeMeas);
     // selects the contacts to use for the yaw odometry. We cannot call it in the onMaintainedContact function as it is
     // looping over all the maintained contact and not used on each contact separately
-    selectForOrientationOdometry(oriUpdatable, sumForces_orientation);
+    selectForOrientationOdometry(oriUpdatable, sumForceRatios_orientation);
 
     // we update the orientation of the floating base first
     if(oriUpdatable)
@@ -169,22 +169,23 @@ void LeggedOdometryManager::updateFbAndContacts(const mc_control::MCController &
         const auto & R1 = contact1.worldFbKineFromRef_.orientation.toMatrix3();
         const auto & R2 = contact2.worldFbKineFromRef_.orientation.toMatrix3();
 
-        double u = contact1.forceNorm() / sumForces_orientation;
+        double u = contact2.forceRatio() / sumForceRatios_orientation;
 
+        /*
+        \tilde{\boldsymbol{R}} = \boldsymbol{R}^{T}_{\mathcal{I}, 1} \boldsymbol{R}_{\mathcal{I}, 2}
+        \boldsymbol{R}_{\mathcal{I}, \text{avg}} =
+         \boldsymbol{R}_{\mathcal{I}, 1} \text{exp} \left( \lambda_{2} \text{vec}\left(\text{log} \left(
+        \tilde{\boldsymbol{R}}\right)\right)  \right)
+        */
         stateObservation::Matrix3 diffRot = R1.transpose() * R2;
 
         stateObservation::Vector3 diffRotVector =
-            (1.0 - u)
-            * stateObservation::kine::skewSymmetricToRotationVector(
-                diffRot); // we perform the multiplication by the weighting coefficient now so a
-                          // zero coefficient gives a unit rotation matrix and not a zero matrix
+            stateObservation::kine::skewSymmetricToRotationVector(diffRot - diffRot.transpose());
 
-        stateObservation::AngleAxis diffRotAngleAxis = stateObservation::kine::rotationVectorToAngleAxis(diffRotVector);
+        stateObservation::Matrix3 meanOri =
+            R1
+            * so::kine::rotationVectorToRotationMatrix(u / 2.0 * diffRotVector); // = R1 * exp( (1 - u) * log(R1^T R2) )
 
-        stateObservation::Matrix3 diffRotMatrix =
-            stateObservation::kine::Orientation(diffRotAngleAxis).toMatrix3(); // exp( (1 - u) * log(R1^T R2) )
-
-        stateObservation::Matrix3 meanOri = R1 * diffRotMatrix;
         fbKine_.orientation = stateObservation::kine::mergeRoll1Pitch1WithYaw2AxisAgnostic(tilt, meanOri);
       }
     }
@@ -238,7 +239,7 @@ void LeggedOdometryManager::updateFbAndContacts(const mc_control::MCController &
   for(auto * nContact : newContacts_) { setNewContact(*nContact, robot); }
 }
 
-void LeggedOdometryManager::selectForOrientationOdometry(bool & oriUpdatable, double & sumForcesOrientation)
+void LeggedOdometryManager::selectForOrientationOdometry(bool & oriUpdatable, double & sumForceRatios)
 {
   // we cannot update the orientation if no contact was set on last iteration
   if(!posUpdatable_) { return; }
@@ -271,7 +272,7 @@ void LeggedOdometryManager::selectForOrientationOdometry(bool & oriUpdatable, do
       // the orientation can be computed using contacts
       oriUpdatable = true;
 
-      sumForcesOrientation += oriOdomContact.forceNorm();
+      sumForceRatios += oriOdomContact.forceRatio();
 
       oriOdomContact.worldFbKineFromRef_.orientation = so::Matrix3(
           oriOdomContact.worldRefKine_.orientation.toMatrix3() * oriOdomContact.contactFbKine_.orientation.toMatrix3());
@@ -569,7 +570,7 @@ const so::kine::Kinematics & LeggedOdometryManager::getContactKinematics(LoConta
     // If the contact is detecting using thresholds, we will then consider the sensor frame as
     // the contact surface frame directly.
     contact.currentWorldKine_ = worldSensorKine;
-    contact.forceNorm(fs.wrenchWithoutGravity(odometryRobot()).force().norm());
+    contact.forceMeas()(fs.wrenchWithoutGravity(odometryRobot()).force());
   }
   else // the kinematics of the contact are the ones of the associated surface
   {
@@ -600,8 +601,10 @@ const so::kine::Kinematics & LeggedOdometryManager::getContactKinematics(LoConta
 
     contact.contactSensorPose_ = contact.currentWorldKine_.getInverse() * worldSensorKine;
     // expressing the force measurement in the frame of the surface
-    contact.forceNorm(
-        (contact.contactSensorPose_.orientation * fs.wrenchWithoutGravity(odometryRobot()).force()).norm());
+    contact.forceMeas((contact.contactSensorPose_.orientation * fs.wrenchWithoutGravity(odometryRobot()).force()));
+    contact.forceRatio(contact.forceMeas().z()
+                       / (contact.forceMeas().head(2).norm()
+                          + 1e-6 * odometryRobot().mass() * stateObservation::cst::gravityConstant));
   }
 
   return contact.currentWorldKine_;
@@ -626,13 +629,11 @@ void LeggedOdometryManager::addContactLogEntries(const mc_control::MCController 
   conversions::kinematics::addToLogger(logger, contact.newIncomingWorldRefKine_,
                                        category_ + "_contacts_" + contactName + "_newIncomingWorldRefKine");
 
-  logger.addLogEntry(category_ + "_contacts_" + contactName + "_realRobot_pos", &contact,
-                     [&ctl, &contact, this]()
+  logger.addLogEntry(category_ + "_contacts_" + contactName + "_realRobot_pos", &contact, [&ctl, &contact, this]()
                      { return ctl.realRobot(robotName_).surfacePose(contact.surface()).translation(); });
-  logger.addLogEntry(category_ + "_contacts_" + contactName + "_realRobot_ori", &contact,
-                     [&ctl, &contact, this]() {
-                       return Eigen::Quaterniond(ctl.realRobot(robotName_).surfacePose(contact.surface()).rotation());
-                     });
+  logger.addLogEntry(
+      category_ + "_contacts_" + contactName + "_realRobot_ori", &contact, [&ctl, &contact, this]()
+      { return Eigen::Quaterniond(ctl.realRobot(robotName_).surfacePose(contact.surface()).rotation()); });
 
   logger.addLogEntry(category_ + "_contacts_" + contactName + "_isSet", &contact,
                      [&contact]() -> std::string { return contact.isSet() ? "Set" : "notSet"; });
@@ -640,11 +641,11 @@ void LeggedOdometryManager::addContactLogEntries(const mc_control::MCController 
   logger.addLogEntry(category_ + "_contacts_" + contactName + "_lambda", &contact,
                      [&contact]() -> double { return contact.lambda(); });
   logger.addLogEntry(category_ + "_contacts_" + contactName + "_forceNorm", &contact,
-                     [&contact]() -> double { return contact.forceNorm(); });
+                     [&contact]() -> double { return contact.forceMeas().norm(); });
   logger.addLogEntry(category_ + "_contacts_" + contactName + "_lifeTime", &contact,
                      [&contact]() -> double { return contact.lifeTime(); });
-  logger.addLogEntry(category_ + "_contacts_" + contactName + "_weightingCoeff", &contact,
-                     [&contact]() -> double { return contact.weightingCoeff(); });
+  logger.addLogEntry(category_ + "_contacts_" + contactName + "_correctionWeightingCoeff", &contact,
+                     [&contact]() -> double { return contact.correctionWeightingCoeff(); });
 }
 
 void LeggedOdometryManager::removeContactLogEntries(mc_rtc::Logger & logger, const LoContactWithSensor & contact)
@@ -668,7 +669,7 @@ void LeggedOdometryManager::correctContactsRef()
     mContact->newIncomingWorldRefKine_ = recomputeContactKinematics(*mContact);
 
     // double tau = ctl_dt_ / (kappa_ * mContact->lifeTime());
-    mContact->weightingCoeff((1 - lambdaInf_) * exp(-kappa_ * mContact->lifeTime()) + lambdaInf_);
+    mContact->correctionWeightingCoeff((1 - lambdaInf_) * exp(-kappa_ * mContact->lifeTime()) + lambdaInf_);
 
     so::kine::Orientation Rtilde(so::Matrix3(mContact->worldRefKineBeforeCorrection_.orientation.toMatrix3().transpose()
                                              * mContact->newIncomingWorldRefKine_.orientation.toMatrix3()));
@@ -677,11 +678,11 @@ void LeggedOdometryManager::correctContactsRef()
         so::kine::skewSymmetricToRotationVector(Rtilde.toMatrix3() - Rtilde.toMatrix3().transpose());
     mContact->worldRefKine_.orientation =
         so::Matrix3(mContact->worldRefKineBeforeCorrection_.orientation.toMatrix3()
-                    * so::kine::rotationVectorToRotationMatrix(mContact->weightingCoeff() / 2.0 * logRtilde));
+                    * so::kine::rotationVectorToRotationMatrix(mContact->correctionWeightingCoeff() / 2.0 * logRtilde));
 
     mContact->worldRefKine_.position =
         mContact->worldRefKine_.position()
-        + mContact->weightingCoeff()
+        + mContact->correctionWeightingCoeff()
               * (mContact->newIncomingWorldRefKine_.position() - mContact->worldRefKine_.position());
     if(odometryType_ == measurements::OdometryType::Flat) { mContact->worldRefKine_.position()(2) = 0.0; }
   }

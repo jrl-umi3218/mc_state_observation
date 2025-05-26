@@ -202,8 +202,8 @@ void ContactsManager<ContactT>::findContactsFromSolver(const mc_control::MCContr
   {
     ContactT & contactWS =
         addContactToManager(measRobot.frame(surfaceName).forceSensor().name(), surfaceName, onAddedContact);
-    contactWS.forceNorm(measRobot.frame(surfaceName).forceSensor().wrenchWithoutGravity(measRobot).force().norm());
-    if(contactWS.forceNorm() > schmittTrigger_.lowerThreshold)
+    contactWS.forceMeas(measRobot.frame(surfaceName).forceSensor().wrenchWithoutGravity(measRobot).force());
+    if(contactWS.forceMeas().norm() > schmittTrigger_.lowerThreshold)
     {
       if(contactWS.wasAlreadySet())
       {
@@ -211,7 +211,7 @@ void ContactsManager<ContactT>::findContactsFromSolver(const mc_control::MCContr
         contactWS.isSet(true);
         onMaintainedContact(contactWS);
       }
-      else if(contactWS.forceNorm() > schmittTrigger_.upperThreshold)
+      else if(contactWS.forceMeas().norm() > schmittTrigger_.upperThreshold)
       {
         contactsDetected_ = true;
         contactWS.isSet(true);
@@ -262,8 +262,8 @@ void ContactsManager<ContactT>::findContactsFromSurfaces(const mc_control::MCCon
   {
     const std::string & fsName = contact.forceSensor();
     const mc_rbdyn::ForceSensor & forceSensor = measRobot.forceSensor(fsName);
-    contact.forceNorm(forceSensor.wrenchWithoutGravity(measRobot).force().norm());
-    if(contact.forceNorm() > schmittTrigger_.lowerThreshold)
+    contact.forceMeas(forceSensor.wrenchWithoutGravity(measRobot).force());
+    if(contact.forceMeas().norm() > schmittTrigger_.lowerThreshold)
     {
       if(contact.wasAlreadySet())
       {
@@ -271,7 +271,7 @@ void ContactsManager<ContactT>::findContactsFromSurfaces(const mc_control::MCCon
         contact.isSet(true);
         onMaintainedContact(contact);
       }
-      else if(contact.forceNorm() > schmittTrigger_.upperThreshold)
+      else if(contact.forceMeas().norm() > schmittTrigger_.upperThreshold)
       {
         contactsDetected_ = true;
         contact.isSet(true);

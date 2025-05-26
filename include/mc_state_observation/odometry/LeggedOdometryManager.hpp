@@ -65,7 +65,7 @@ void LeggedOdometryManager::initContacts(const mc_control::MCController & ctl,
 
   const auto & robot = ctl.robot(robotName_);
 
-  double sumForces_position = 0.0;
+  double sumForceRatios_position = 0.0;
   posUpdatable_ = false;
   newContacts_.clear();
   maintainedContacts_.clear();
@@ -79,7 +79,7 @@ void LeggedOdometryManager::initContacts(const mc_control::MCController & ctl,
   };
 
   auto onMaintainedContact =
-      [this, &robot, &runParams, &sumForces_position, &ctl](LoContactWithSensor & maintainedContact)
+      [this, &robot, &runParams, &sumForceRatios_position, &ctl](LoContactWithSensor & maintainedContact)
   {
     maintainedContacts_.push_back(&maintainedContact);
     maintainedContact.lifeTimeIncrement(ctl.timeStep);
@@ -100,7 +100,7 @@ void LeggedOdometryManager::initContacts(const mc_control::MCController & ctl,
     const stateObservation::kine::Kinematics & worldContactKine =
         getContactKinematics(maintainedContact, robot.forceSensor(maintainedContact.name()));
 
-    sumForces_position += maintainedContact.forceNorm();
+    sumForceRatios_position += maintainedContact.forceRatio();
 
     maintainedContact.contactFbKine_ = worldContactKine.getInverse() * worldFbKine;
     maintainedContact.worldFbKineFromRef_ = maintainedContact.worldRefKine_ * maintainedContact.contactFbKine_;
@@ -126,11 +126,7 @@ void LeggedOdometryManager::initContacts(const mc_control::MCController & ctl,
   contactsManager().updateContacts(ctl, robotName_, onNewContact, onMaintainedContact, onRemovedContact,
                                    *runParams.onAddedContactFn);
 
-  for(auto * mContact : maintainedContacts_)
-  {
-    if(sumForces_position > 1e-6) { mContact->lambda(mContact->forceNorm() / sumForces_position); }
-    else { mContact->lambda(0.0); }
-  }
+  for(auto * mContact : maintainedContacts_) { mContact->lambda(mContact->forceRatio() / sumForceRatios_position); }
 }
 
 } // namespace mc_state_observation::odometry

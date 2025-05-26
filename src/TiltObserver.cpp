@@ -59,6 +59,7 @@ void TiltObserver::configure(const mc_control::MCController & ctl, const mc_rtc:
   {
     bool verbose = config("verbose", true);
     bool withYawEstimation = config("withYawEstimation", true);
+    bool correctContacts = leggedOdomConfig("correctContacts", true);
 
     // surfaces used for the contact detection. If the desired detection method doesn't use surfaces, we make sure this
     // list is not filled in the configuration file to avoid the use of an undesired method.
@@ -79,7 +80,8 @@ void TiltObserver::configure(const mc_control::MCController & ctl, const mc_rtc:
 
     odometry::LeggedOdometryManager::Configuration odomConfig(robot_, name(), odometryManager_.odometryType_);
     odomConfig.velocityUpdate(odometry::LeggedOdometryManager::VelocityUpdate::NoUpdate)
-        .withYawEstimation(withYawEstimation);
+        .withYawEstimation(withYawEstimation)
+        .correctContacts(correctContacts);
     if(asBackup_) { odomConfig.withModeSwitchInGui(false); }
 
     if(contactsDetectionMethod == LoContactsManager::ContactsDetection::Surfaces)
@@ -637,8 +639,7 @@ void TiltObserver::addToLogger(const mc_control::MCController & ctl,
   logger.addLogEntry(category + "_constants_beta", [this]() -> double { return estimator_.getBeta(); });
   logger.addLogEntry(category + "_constants_gamma", [this]() -> double { return estimator_.getGamma(); });
 
-  logger.addLogEntry(category + "_debug_OdometryType",
-                     [this]() -> std::string
+  logger.addLogEntry(category + "_debug_OdometryType", [this]() -> std::string
                      { return measurements::odometryTypeToSstring(odometryManager_.odometryType_); });
 
   logger.addLogEntry(category + "_controlAnchorFrame", [this]() -> const sva::PTransformd & { return X_0_C_ctl_; });
@@ -820,8 +821,7 @@ void TiltObserver::addToLogger(const mc_control::MCController & ctl,
                        return worldImuKine.linVel();
                      });
 
-  logger.addLogEntry(category + "_debug_contactDetected",
-                     [this]() -> std::string
+  logger.addLogEntry(category + "_debug_contactDetected", [this]() -> std::string
                      { return odometryManager_.contactsManager().contactsDetected() ? "contacts" : "no contacts"; });
 
   logger.addLogEntry(category + "_debug_ctlBodyVel",
