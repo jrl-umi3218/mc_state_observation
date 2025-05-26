@@ -570,7 +570,7 @@ const so::kine::Kinematics & LeggedOdometryManager::getContactKinematics(LoConta
     // If the contact is detecting using thresholds, we will then consider the sensor frame as
     // the contact surface frame directly.
     contact.currentWorldKine_ = worldSensorKine;
-    contact.forceMeas()(fs.wrenchWithoutGravity(odometryRobot()).force());
+    contact.forceMeas(fs.wrenchWithoutGravity(odometryRobot()).force());
   }
   else // the kinematics of the contact are the ones of the associated surface
   {
@@ -601,7 +601,7 @@ const so::kine::Kinematics & LeggedOdometryManager::getContactKinematics(LoConta
 
     contact.contactSensorPose_ = contact.currentWorldKine_.getInverse() * worldSensorKine;
     // expressing the force measurement in the frame of the surface
-    contact.forceMeas((contact.contactSensorPose_.orientation * fs.wrenchWithoutGravity(odometryRobot()).force()));
+    contact.forceMeas(contact.contactSensorPose_.orientation * fs.wrenchWithoutGravity(odometryRobot()).force());
     contact.forceRatio(contact.forceMeas().z()
                        / (contact.forceMeas().head(2).norm()
                           + 1e-6 * odometryRobot().mass() * stateObservation::cst::gravityConstant));
