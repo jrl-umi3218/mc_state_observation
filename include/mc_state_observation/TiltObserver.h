@@ -187,10 +187,6 @@ protected:
   stateObservation::Vector xk_;
   /// State vector estimated by the Tilt Observer
   stateObservation::Vector yk_;
-  // estimated kinematics of the floating base in the world
-  stateObservation::kine::Kinematics correctedWorldFbKine_;
-  // estimated kinematics of the IMU in the world
-  stateObservation::kine::Kinematics correctedWorldImuKine_;
 
   /* Floating base's kinematics */
   Eigen::Matrix3d R_0_fb_; // estimated orientation of the floating base in the world frame
@@ -208,7 +204,6 @@ protected:
                                    // initial jumps due to the finite differences.
 
   /* Odometry parameters */
-  odometry::LeggedOdometryManager odometryManager_; // manager for the legged odometry
 
   /* Variables for the use as a backup */
   // indicates if the estimator is used as a backup or not
@@ -223,6 +218,13 @@ protected:
   sva::MotionVecd imuVelC_;
   // pose of the IMU in the anchor frame
   sva::PTransformd X_C_IMU_;
+
+public:
+  odometry::LeggedOdometryManager odometryManager_; // manager for the legged odometry
+  // estimated kinematics of the floating base in the world
+  stateObservation::kine::Kinematics correctedWorldFbKine_;
+  // estimated kinematics of the IMU in the world
+  stateObservation::kine::Kinematics correctedWorldImuKine_;
 };
 
 } // namespace mc_state_observation

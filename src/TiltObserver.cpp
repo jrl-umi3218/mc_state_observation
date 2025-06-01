@@ -60,6 +60,7 @@ void TiltObserver::configure(const mc_control::MCController & ctl, const mc_rtc:
     bool verbose = config("verbose", true);
     bool withYawEstimation = config("withYawEstimation", true);
     bool correctContacts = leggedOdomConfig("correctContacts", true);
+    bool forceRatioBasedWeighting = leggedOdomConfig("forceRatioBasedWeighting", true);
 
     // surfaces used for the contact detection. If the desired detection method doesn't use surfaces, we make sure this
     // list is not filled in the configuration file to avoid the use of an undesired method.
@@ -81,7 +82,8 @@ void TiltObserver::configure(const mc_control::MCController & ctl, const mc_rtc:
     odometry::LeggedOdometryManager::Configuration odomConfig(robot_, name(), odometryManager_.odometryType_);
     odomConfig.velocityUpdate(odometry::LeggedOdometryManager::VelocityUpdate::NoUpdate)
         .withYawEstimation(withYawEstimation)
-        .correctContacts(correctContacts);
+        .correctContacts(correctContacts)
+        .forceRatioBasedWeighting(forceRatioBasedWeighting);
     if(asBackup_) { odomConfig.withModeSwitchInGui(false); }
 
     if(contactsDetectionMethod == LoContactsManager::ContactsDetection::Surfaces)

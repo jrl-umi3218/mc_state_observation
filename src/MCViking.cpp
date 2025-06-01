@@ -13,10 +13,9 @@ namespace so = stateObservation;
 using OdometryType = measurements::OdometryType;
 using LoContactsManager = odometry::LeggedOdometryManager::ContactsManager;
 
-MCViking::MCViking(const std::string & type, double dt, bool asBackup)
-: mc_observers::Observer(type, dt), estimator_(dt, alpha_, beta_, 1 / (2 * M_PI), 1), odometryManager_(dt)
+MCViking::MCViking(const std::string & type, double dt)
+: mc_observers::Observer(type, dt), estimator_(dt, alpha_, beta_, gamma_, rho_, 1, true), odometryManager_(dt)
 {
-  asBackup_ = asBackup;
 }
 
 void MCViking::configure(const mc_control::MCController & ctl, const mc_rtc::Configuration & config)
@@ -34,14 +33,12 @@ void MCViking::configure(const mc_control::MCController & ctl, const mc_rtc::Con
 
   filterGainsConfig("initAlpha", alpha_);
   filterGainsConfig("initBeta", beta_);
+  filterGainsConfig("initGamma", gamma_);
   filterGainsConfig("initRho", rho_);
   filterGainsConfig("finalAlpha", finalAlpha_);
   filterGainsConfig("finalBeta", finalBeta_);
+  filterGainsConfig("finalGamma", finalGamma_);
   filterGainsConfig("finalRho", finalRho_);
-  filterGainsConfig("gammaContacts", gamma_contacts_);
-  filterGainsConfig("lambdaContacts", lambda_contacts_);
-  filterGainsConfig("muContacts", mu_contacts_);
-  filterGainsConfig("muGyro", mu_gyroscope_);
 
   anchorFrameFunction_ = "KinematicAnchorFrame::" + ctl.robot(robot_).name();
   // if a user-defined anchor frame function is given, we use it instead
@@ -175,10 +172,9 @@ void MCViking::reset(const mc_control::MCController & ctl)
   const Eigen::Matrix3d cOri = (imu.X_b_s() * realRobot.bodyPosW(imu.parentBody())).rotation();
   so::Vector3 initX2 = initWorldImuKine.orientation.toMatrix3().transpose() * so::Vector3::UnitZ();
 
-  estimator_.initEstimator(so::Vector3::Zero(), initX2, initWorldImuKine.position(),
-                           initWorldImuKine.orientation.toVector4());
+  estimator_.initEstimator(so::Vector3::Zero(), initX2, stateObservation::Vector3::Zero(),
+                           initWorldImuKine.orientation.toVector4(), initWorldImuKine.position());
 
-  estimator_.pushInput(stateObservation::InputViking());
   anchorFrameJumped_ = false;
   iter_ = 0;
   imuVelC_ = sva::MotionVecd::Zero();
@@ -593,8 +589,7 @@ void MCViking::addToLogger(const mc_control::MCController & ctl, mc_rtc::Logger 
   logger.addLogEntry(category + "_constants_gains_contacts_lambda", [this]() -> double { return lambda_contacts_; });
   logger.addLogEntry(category + "_constants_gains_contacts_gamma", [this]() -> double { return gamma_contacts_; });
 
-  logger.addLogEntry(category + "_debug_OdometryType",
-                     [this]() -> std::string
+  logger.addLogEntry(category + "_debug_OdometryType", [this]() -> std::string
                      { return measurements::odometryTypeToSstring(odometryManager_.odometryType_); });
 
   logger.addLogEntry(category + "_IMU_world_orientation",
@@ -752,8 +747,7 @@ void MCViking::addToLogger(const mc_control::MCController & ctl, mc_rtc::Logger 
                        return worldImuKine.linVel();
                      });
 
-  logger.addLogEntry(category + "_debug_contactDetected",
-                     [this]() -> std::string
+  logger.addLogEntry(category + "_debug_contactDetected", [this]() -> std::string
                      { return odometryManager_.contactsManager().contactsDetected() ? "contacts" : "no contacts"; });
 
   logger.addLogEntry(category + "_debug_ctlBodyVel",

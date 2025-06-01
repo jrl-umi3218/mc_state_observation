@@ -32,6 +32,7 @@ void LeggedOdometryManager::init(const mc_control::MCController & ctl,
   odometryType_ = odomConfig.odometryType_;
   withYawEstimation_ = odomConfig.withYaw_;
   correctContacts_ = odomConfig.correctContacts_;
+  forceRatioBasedWeighting_ = odomConfig.forceRatioBasedWeighting_;
   velocityUpdate_ = odomConfig.velocityUpdate_;
   odometryName_ = odomConfig.odometryName_;
 
@@ -169,7 +170,10 @@ void LeggedOdometryManager::updateFbAndContacts(const mc_control::MCController &
         const auto & R1 = contact1.worldFbKineFromRef_.orientation.toMatrix3();
         const auto & R2 = contact2.worldFbKineFromRef_.orientation.toMatrix3();
 
-        double u = contact2.forceRatio() / sumForceRatios_orientation;
+        // double u = contact2.forceRatio() / sumForceRatios_orientation;
+        double u;
+        if(forceRatioBasedWeighting_) { u = contact2.forceRatio() / sumForceRatios_orientation; }
+        else { u = 0.5; }
 
         /*
         \tilde{\boldsymbol{R}} = \boldsymbol{R}^{T}_{\mathcal{I}, 1} \boldsymbol{R}_{\mathcal{I}, 2}
@@ -843,6 +847,8 @@ void LeggedOdometryManager::addToLogger(mc_rtc::Logger & logger, const std::stri
 
   logger.addLogEntry(leggedOdomCategory + "_kappa", [this]() { return kappa_; });
   logger.addLogEntry(leggedOdomCategory + "_lambdaInf", [this]() { return lambdaInf_; });
+
+  logger.addLogEntry(leggedOdomCategory + "_forceRatioBasedWeighting", [this]() { return forceRatioBasedWeighting_; });
 
   logger.addLogEntry(leggedOdomCategory + "_OdometryType",
                      [this]() -> std::string { return measurements::odometryTypeToSstring(odometryType_); });

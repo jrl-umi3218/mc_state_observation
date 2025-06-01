@@ -362,6 +362,9 @@ public:
     bool withYaw_ = true;
     // Indicates if the reference pose of the contacts must be corrected at the end of each iteration.
     bool correctContacts_ = true;
+    // Indicates if the weighting of contacts for anchor frame computation must be based on the ratio of the vertical
+    // force over the tangential force.
+    bool forceRatioBasedWeighting_ = true;
     // If true, adds the possiblity to switch between 6d and flat odometry from the gui.
     // Should be set to false if this feature is implemented in the estimator using this library.
     bool withModeSwitchInGui_ = true;
@@ -381,6 +384,11 @@ public:
     inline Configuration & correctContacts(bool correctContacts) noexcept
     {
       correctContacts_ = correctContacts;
+      return *this;
+    }
+    inline Configuration & forceRatioBasedWeighting(bool forceRatioBasedWeighting) noexcept
+    {
+      forceRatioBasedWeighting_ = forceRatioBasedWeighting;
       return *this;
     }
 
@@ -685,6 +693,9 @@ protected:
   bool withYawEstimation_;
   // Indicates if the reference pose of the contacts must be corrected at the end of each iteration.
   bool correctContacts_ = true;
+  // Indicates if the weighting of contacts for anchor frame computation must be based on the ratio of the vertical
+  // force over the tangential force.
+  bool forceRatioBasedWeighting_ = true;
 
   // position of the anchor point of the robot in the world
   stateObservation::Vector3 worldAnchorPos_;

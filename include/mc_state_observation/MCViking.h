@@ -2,7 +2,6 @@
 
 #include <boost/circular_buffer.hpp>
 
-#include <forward_list>
 #include <mc_state_observation/odometry/LeggedOdometryManager.h>
 #include <state-observation/observer/viking.hpp>
 
@@ -26,7 +25,7 @@ public:
   /// @brief Constructor for the MCVanyte.
   /// @details The parameters asBackup is given only if the Vanyte is used as a backup by the
   /// Kinetics Observer
-  MCViking(const std::string & type, double dt, bool asBackup = false);
+  MCViking(const std::string & type, double dt);
 
   void configure(const mc_control::MCController & ctl, const mc_rtc::Configuration &) override;
 
@@ -152,6 +151,7 @@ protected:
   ///  parameter related to the fast convergence of the tilt
   double finalBeta_ = 1;
   /// parameter related to the orthogonality
+  double finalGamma_ = 2;
   double finalRho_ = 2;
 
   /*!
@@ -162,6 +162,7 @@ protected:
   /// initial value of the parameter related to the fast convergence of the tilt
   double beta_ = 1;
   /// initial value of the parameter related to the orthogonality
+  double gamma_ = 2;
   double rho_ = 2;
 
   // flag indicating the variables we want in the resulting Kinematics object
@@ -212,12 +213,6 @@ protected:
 
   double contactDetectionThreshold_; // threshold used for the contacts detection
 
-  /* Variables for the use as a backup */
-  // indicates if the estimator is used as a backup or not
-  bool asBackup_ = false;
-  // Buffer containing the estimated pose of the floating base in the world over the whole backup interval.
-  boost::circular_buffer<stateObservation::kine::Kinematics> backupFbKinematics_;
-
   /* Debug variables */
   // "measured" local linear velocity of the IMU
   stateObservation::Vector3 yv_;
@@ -227,15 +222,7 @@ protected:
   sva::PTransformd X_C_IMU_;
 
   stateObservation::kine::Orientation measuredOri_ = stateObservation::kine::Orientation::zeroRotation();
-  stateObservation::Vector measurements_;
-
-  double mu_contacts_ = 2;
-  double mu_gyroscope_ = 2;
-  double lambda_contacts_ = 2;
-  double gamma_contacts_ = 1;
-
-  // delayed IMU orientation measurement
-  DelayedOriMeasurement delayedOriMeas_;
+  stateObservation::Vector measuredPos_;
 };
 
 } // namespace mc_state_observation
