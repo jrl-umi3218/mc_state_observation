@@ -364,9 +364,7 @@ void TiltObserver::runTiltEstimator(const mc_control::MCController & ctl, const 
   estimator_.setBeta(beta_);
   estimator_.setGamma(gamma_);
 
-  rbd::Jacobian()
-
-      if(odometryManager_.odometryType_ != measurements::OdometryType::None)
+  if(odometryManager_.odometryType_ != measurements::OdometryType::None)
   {
     updateNecessaryFramesOdom(ctl, updatedRobot);
   }
