@@ -434,7 +434,7 @@ public:
   /// direct input from the solver.
   /// @param ctl Controller
   /// @param odomConfig Desired configuraion of the odometry
-  /// @param verbose
+  /// @param contactsConf Configuration of the contacts manager
   void init(const mc_control::MCController & ctl,
             const Configuration & odomConfig,
             const ContactsManagerConfiguration & contactsConf);
