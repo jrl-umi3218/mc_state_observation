@@ -4,22 +4,13 @@
 
 #include <forward_list>
 #include <mc_state_observation/odometry/LeggedOdometryManager.h>
-#include <state-observation/observer/waiko.hpp>
+#include <state-observation/observer/waiko-humanoid.hpp>
 
 namespace mc_state_observation
 {
 
 struct MCWaiko : public mc_observers::Observer
 {
-  /// @brief Structure containing information about delayed orientation measurements.
-  struct DelayedOriMeasurement
-  {
-    stateObservation::Matrix3 meas_;
-    double gain_;
-    stateObservation::kine::Kinematics updatedPoseWithoutMeas_;
-    stateObservation::kine::Kinematics updatedPoseWithMeas_;
-  };
-
   // we define MCKineticsObserver as a friend as it can instantiate this observer as a backup
   friend struct MCKineticsObserver;
   EIGEN_MAKE_ALIGNED_OPERATOR_NEW
@@ -171,7 +162,7 @@ protected:
   // function used to compute the anchor frame of the robot in the world.
   std::string anchorFrameFunction_;
   // instance of the Tilt Estimator for humanoid robots.
-  stateObservation::Waiko estimator_;
+  stateObservation::WaikoHumanoid estimator_;
 
   /* kinematics used for computation */
   // kinematics of the IMU in the floating base after the encoders update
@@ -185,10 +176,8 @@ protected:
 
   /* Estimation results */
 
-  // The observed tilt of the sensor
-  Eigen::Matrix3d estimatedRotationIMU_;
-  /// State vector estimated by the Tilt Observer
-  stateObservation::Vector xk_;
+  // The observed orientation of the IMU
+  stateObservation::kine::Orientation estimatedIMUOri_;
   // estimated kinematics of the floating base in the world
   stateObservation::kine::Kinematics correctedWorldFbKine_;
 
@@ -229,12 +218,14 @@ protected:
   stateObservation::Vector measurements_;
 
   double mu_contacts_ = 2;
-  double mu_gyroscope_ = 2;
+  double tau_contacts_ = 2;
   double lambda_contacts_ = 2;
-  double gamma_contacts_ = 1;
+  double eta_contacts_ = 2;
 
-  // delayed IMU orientation measurement
-  DelayedOriMeasurement delayedOriMeas_;
+  double mu_contacts_final_ = 2;
+  double tau_contacts_final_ = 2;
+  double lambda_contacts_final_ = 2;
+  double eta_contacts_final_ = 2;
 };
 
 } // namespace mc_state_observation
