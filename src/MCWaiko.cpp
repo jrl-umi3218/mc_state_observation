@@ -317,11 +317,13 @@ void MCWaiko::runTiltEstimator(const mc_control::MCController & ctl, const mc_rb
     const so::kine::Kinematics & contactFbKine = mContact->contactFbKine_;
     const so::kine::Kinematics worldImuKine_fromContactRef = worldContactRefKine * contactFbKine * fbImuKine_;
 
+    so::kine::Kinematics imuContactKine = fbImuKine_.getInverse() * contactFbKine.getInverse();
     measuredOri_ = worldImuKine_fromContactRef.orientation.toMatrix3();
-    estimator_.addContactInput(
-        stateObservation::WaikoHumanoid::InputWaiko::ContactInput(worldImuKine_fromContactRef.orientation.toMatrix3(),
-                                                                  worldImuKine_fromContactRef.position(), 1, 1, 1, 1),
-        k);
+    estimator_.addContactInput(stateObservation::WaikoHumanoid::InputWaiko::ContactInput(
+                                   worldImuKine_fromContactRef.orientation.toMatrix3(),
+                                   worldImuKine_fromContactRef.position(), imuContactKine.position(),
+                                   worldContactRefKine.position(), 1, 1, 1, 1),
+                               k);
   }
 
   // estimation of the state with the complementary filters
