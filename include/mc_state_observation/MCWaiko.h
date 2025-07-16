@@ -141,6 +141,7 @@ protected:
   double finalAlpha_ = 5;
   ///  parameter related to the fast convergence of the tilt
   double finalBeta_ = 1;
+  double finalGamma_ = 1;
   /// parameter related to the orthogonality
   double finalRho_ = 2;
 
@@ -151,6 +152,7 @@ protected:
   double alpha_ = 5;
   /// initial value of the parameter related to the fast convergence of the tilt
   double beta_ = 1;
+  double gamma_ = 1;
   /// initial value of the parameter related to the orthogonality
   double rho_ = 2;
 

@@ -41,6 +41,7 @@ void MCWaiko::configure(const mc_control::MCController & ctl, const mc_rtc::Conf
   filterGainsConfig("initAlpha", alpha_);
   filterGainsConfig("initBeta", beta_);
   filterGainsConfig("initRho", rho_);
+  filterGainsConfig("initGamma", gamma_);
   filterGainsConfig("initMu", mu_contacts_);
   filterGainsConfig("initTau", tau_contacts_);
   filterGainsConfig("initLambda", lambda_contacts_);
@@ -49,6 +50,7 @@ void MCWaiko::configure(const mc_control::MCController & ctl, const mc_rtc::Conf
   filterGainsConfig("finalAlpha", finalAlpha_);
   filterGainsConfig("finalBeta", finalBeta_);
   filterGainsConfig("finalRho", finalRho_);
+  filterGainsConfig("finalGamma", finalGamma_);
   filterGainsConfig("finalMu", mu_contacts_final_);
   filterGainsConfig("finalTau", tau_contacts_final_);
   filterGainsConfig("finalLambda", lambda_contacts_final_);
@@ -207,6 +209,11 @@ bool MCWaiko::run(const mc_control::MCController & ctl)
     alpha_ = finalAlpha_;
     beta_ = finalBeta_;
     rho_ = finalRho_;
+    gamma_ = finalGamma_;
+    lambda_contacts_ = lambda_contacts_final_;
+    mu_contacts_ = mu_contacts_final_;
+    tau_contacts_ = tau_contacts_final_;
+    eta_contacts_ = eta_contacts_final_;
   }
 
   odometryManager_.initLoop(ctl, logger, odometry::LeggedOdometryManager::RunParameters());
@@ -575,10 +582,12 @@ void MCWaiko::addToLogger(const mc_control::MCController & ctl, mc_rtc::Logger &
 
   logger.addLogEntry(category + "_constants_gains_alpha", [this]() -> double { return estimator_.getAlpha(); });
   logger.addLogEntry(category + "_constants_gains_beta", [this]() -> double { return estimator_.getBeta(); });
+  logger.addLogEntry(category + "_constants_gains_gamma", [this]() -> double { return gamma_; });
   logger.addLogEntry(category + "_constants_gains_rho", [this]() -> double { return estimator_.getRho(); });
   logger.addLogEntry(category + "_constants_gains_contacts_mu", [this]() -> double { return mu_contacts_; });
+  logger.addLogEntry(category + "_constants_gains_contacts_tau", [this]() -> double { return tau_contacts_; });
   logger.addLogEntry(category + "_constants_gains_contacts_lambda", [this]() -> double { return lambda_contacts_; });
-  logger.addLogEntry(category + "_constants_gains_contacts_gamma", [this]() -> double { return gamma_contacts_; });
+  logger.addLogEntry(category + "_constants_gains_contacts_eta", [this]() -> double { return eta_contacts_; });
 
   logger.addLogEntry(category + "_debug_OdometryType", [this]() -> std::string
                      { return measurements::odometryTypeToSstring(odometryManager_.odometryType_); });
