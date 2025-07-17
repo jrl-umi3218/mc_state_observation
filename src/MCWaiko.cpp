@@ -15,7 +15,7 @@ using OdometryType = measurements::OdometryType;
 using LoContactsManager = odometry::LeggedOdometryManager::ContactsManager;
 
 MCWaiko::MCWaiko(const std::string & type, double dt, bool asBackup)
-: mc_observers::Observer(type, dt), estimator_(dt, alpha_, beta_, 1 / (2 * M_PI), false), odometryManager_(dt)
+: mc_observers::Observer(type, dt), estimator_(dt, alpha_, beta_, 1 / (2 * M_PI), 0.5, 2), odometryManager_(dt)
 {
   asBackup_ = asBackup;
 }
@@ -29,11 +29,6 @@ void MCWaiko::configure(const mc_control::MCController & ctl, const mc_rtc::Conf
   config("updateRobot", updateRobot_);
   config("updateSensor", updateSensor_);
 
-  if(config.has("withGyroBias"))
-  {
-    bool withGyroBias = config("withGyroBias");
-    estimator_.setWithGyroBias(withGyroBias);
-  }
   auto odomConfig = config("leggedOdometry");
   auto contactsConfig = config("contacts");
   auto filterGainsConfig = config("filterGains");
@@ -42,15 +37,12 @@ void MCWaiko::configure(const mc_control::MCController & ctl, const mc_rtc::Conf
   filterGainsConfig("initBeta", beta_);
   filterGainsConfig("initRho", rho_);
   filterGainsConfig("initMu", mu_contacts_);
-  filterGainsConfig("initGamma", gamma_contacts_);
   filterGainsConfig("initLambda", lambda_contacts_);
-  // filterGainsConfig("initEta", eta_contacts_);
 
   filterGainsConfig("finalAlpha", finalAlpha_);
   filterGainsConfig("finalBeta", finalBeta_);
   filterGainsConfig("finalRho", finalRho_);
   filterGainsConfig("finalMu", mu_contacts_final_);
-  filterGainsConfig("finalGamma", gamma_contacts_final_);
   filterGainsConfig("finalLambda", lambda_contacts_final_);
   // filterGainsConfig("finalEta", eta_contacts_final_);
 
@@ -186,8 +178,8 @@ void MCWaiko::reset(const mc_control::MCController & ctl)
   const Eigen::Matrix3d cOri = (imu.X_b_s() * realRobot.bodyPosW(imu.parentBody())).rotation();
   so::Vector3 initX2 = initWorldImuKine.orientation.toMatrix3().transpose() * so::Vector3::UnitZ();
 
-  estimator_.initEstimator(so::Vector3::Zero(), initX2, so::Vector3::Zero(), initWorldImuKine.orientation.toVector4(),
-                           initWorldImuKine.position());
+  estimator_.initEstimator(so::Vector3::Zero(), initX2, initWorldImuKine.orientation.toVector4(),
+                           initWorldImuKine.orientation.toMatrix3().transpose() * initWorldImuKine.position());
 
   anchorFrameJumped_ = false;
   iter_ = 0;
@@ -206,12 +198,9 @@ bool MCWaiko::run(const mc_control::MCController & ctl)
   {
     alpha_ = finalAlpha_;
     beta_ = finalBeta_;
-    // gamma_ = finalGamma_;
     rho_ = finalRho_;
     mu_contacts_ = mu_contacts_final_;
     lambda_contacts_ = lambda_contacts_final_;
-    gamma_contacts_ = gamma_contacts_final_;
-    // eta_contacts_ = eta_contacts_final_;
   }
 
   odometryManager_.initLoop(ctl, logger, odometry::LeggedOdometryManager::RunParameters());
@@ -309,30 +298,102 @@ void MCWaiko::runTiltEstimator(const mc_control::MCController & ctl, const mc_rb
   }
   else { estimator_.setInput(yv_, imu.linearAcceleration(), imu.angularVelocity(), k, false); }
 
+  stateObservation::kine::Kinematics worldFbKineFromAnchor;
+
+  worldFbKineFromAnchor.position = odometryManager_.getWorldFbPosFromAnchor();
+
+  double sumLambdasOri = 0.0;
+  std::set<std::reference_wrapper<odometry::LoContactWithSensor>, sortByForceRatio> oriOdometryContacts_;
+
   for(auto * mContact : odometryManager_.maintainedContacts())
   {
-    const so::kine::Kinematics & worldContactRefKine = mContact->worldRefKine_;
-    const so::kine::Kinematics & contactFbKine = mContact->contactFbKine_;
-    const so::kine::Kinematics worldImuKine_fromContactRef = worldContactRefKine * contactFbKine * fbImuKine_;
-
-    so::kine::Kinematics imuContactKine = fbImuKine_.getInverse() * contactFbKine.getInverse();
-    measuredOri_ = worldImuKine_fromContactRef.orientation.toMatrix3();
-
-    std::cout << std::endl << "Waiko: " << imuContactKine.position().transpose() << std::endl;
-
-    estimator_.addContactInput(stateObservation::WaikoHumanoid::InputWaiko::ContactInput(
-                                   worldImuKine_fromContactRef.orientation.toMatrix3(),
-                                   worldImuKine_fromContactRef.position(), imuContactKine.position(),
-                                   worldContactRefKine.position(), mu_contacts_ * mContact->lambda(),
-                                   lambda_contacts_ * mContact->lambda(), gamma_contacts_ * mContact->lambda()),
-                               k);
+    if(mContact->isSet())
+    {
+      mContact->useForOrientation_ = true;
+      oriOdometryContacts_.insert(*mContact);
+    }
   }
+
+  // contacts are sorted from the lowest force to the highest force
+  while(oriOdometryContacts_.size() > 2)
+  {
+    (*oriOdometryContacts_.begin()).get().useForOrientation_ = false;
+    oriOdometryContacts_.erase(oriOdometryContacts_.begin());
+  }
+
+  // the position of the floating base in the world can be obtained by a weighted average of the estimations for each
+  // contact
+  for(odometry::LoContactWithSensor & oriOdomContact : oriOdometryContacts_)
+  {
+    sumLambdasOri += oriOdomContact.lambda();
+
+    oriOdomContact.worldFbKineFromRef_.orientation = so::Matrix3(
+        oriOdomContact.worldRefKine_.orientation.toMatrix3() * oriOdomContact.contactFbKine_.orientation.toMatrix3());
+  }
+
+  worldFbKineFromAnchor.orientation.setZeroRotation();
+
+  if(oriOdometryContacts_.size() == 1)
+  {
+    // the orientation can be updated using 1 contact
+    worldFbKineFromAnchor.orientation = oriOdometryContacts_.begin()->get().worldFbKineFromRef_.orientation;
+  }
+  if(oriOdometryContacts_.size() == 2) // the orientation can be updated using 2 contacts
+  {
+    const auto & contact1 = (*oriOdometryContacts_.begin()).get();
+    const auto & contact2 = (*std::next(oriOdometryContacts_.begin(), 1)).get();
+
+    const auto & R1 = contact1.worldFbKineFromRef_.orientation.toMatrix3();
+    const auto & R2 = contact2.worldFbKineFromRef_.orientation.toMatrix3();
+
+    double u = contact2.lambda() / sumLambdasOri;
+
+    /*
+    \tilde{\boldsymbol{R}} = \boldsymbol{R}^{T}_{\mathcal{I}, 1} \boldsymbol{R}_{\mathcal{I}, 2}
+    \boldsymbol{R}_{\mathcal{I}, \text{avg}} =
+     \boldsymbol{R}_{\mathcal{I}, 1} \text{exp} \left( \lambda_{2} \text{vec}\left(\text{log} \left(
+    \tilde{\boldsymbol{R}}\right)\right)  \right)
+    */
+    stateObservation::Matrix3 diffRot = R1.transpose() * R2;
+
+    stateObservation::Vector3 diffRotVector =
+        stateObservation::kine::skewSymmetricToRotationVector(diffRot - diffRot.transpose());
+
+    worldFbKineFromAnchor.orientation = stateObservation::Matrix3(
+        R1 * so::kine::rotationVectorToRotationMatrix(u / 2.0 * diffRotVector)); // = R1 * exp( (1 - u) * log(R1^T R2) )
+  }
+
+  const so::kine::Kinematics worldImuKine_fromContactRef = worldFbKineFromAnchor * fbImuKine_;
+
+  estimator_.addContactInput(
+      so::WaikoHumanoid::InputWaiko::ContactInput(worldImuKine_fromContactRef.orientation.toMatrix3(),
+                                                  worldImuKine_fromContactRef.position()),
+      k);
+
+  // for(auto * mContact : odometryManager_.maintainedContacts())
+  // {
+  //   const so::kine::Kinematics & worldContactRefKine = mContact->worldRefKine_;
+  //   const so::kine::Kinematics & contactFbKine = mContact->contactFbKine_;
+  //   const so::kine::Kinematics worldImuKine_fromContactRef = worldContactRefKine * contactFbKine * fbImuKine_;
+
+  //   so::kine::Kinematics imuContactKine = fbImuKine_.getInverse() * contactFbKine.getInverse();
+  //   measuredOri_ = worldImuKine_fromContactRef.orientation.toMatrix3();
+
+  //   std::cout << std::endl << "Waiko: " << imuContactKine.position().transpose() << std::endl;
+
+  //   estimator_.addContactInput(stateObservation::WaikoHumanoid::InputWaiko::ContactInput(
+  //                                  worldImuKine_fromContactRef.orientation.toMatrix3(),
+  //                                  worldImuKine_fromContactRef.position(), imuContactKine.position(),
+  //                                  worldContactRefKine.position(), mu_contacts_ * mContact->lambda(),
+  //                                  lambda_contacts_ * mContact->lambda(), gamma_contacts_ * mContact->lambda()),
+  //                              k);
+  // }
 
   // estimation of the state with the complementary filters
   estimator_.getEstimatedState(k + 1);
 
   // retrieving the estimated orientation
-  estimatedIMUOri_.fromVector4(estimator_.getEstimatedOrientation());
+  estimatedIMUOri_ = estimator_.getEstimatedOrientation();
 
   // Estimated orientation of the floating base in the world (especially the tilt)
   R_0_fb_ = estimatedIMUOri_.toMatrix3() * fbImuKine_.orientation.toMatrix3().transpose();
@@ -512,9 +573,6 @@ void MCWaiko::addToLogger(const mc_control::MCController & ctl, mc_rtc::Logger &
   logger.addLogEntry(category + "_estimatedState_p",
                      [this]() -> so::Vector3 { return R_0_fb_ * estimator_.getEstimatedLocPosition(); });
 
-  logger.addLogEntry(category + "_estimatedState_gyroBias",
-                     [this]() -> so::Vector3 { return estimator_.getEstimatedGyroBias(); });
-
   logger.addLogEntry(category + "_estimatedState_x1",
                      [this]() -> so::Vector3 { return estimator_.getEstimatedLocLinVel(); });
 
@@ -536,7 +594,7 @@ void MCWaiko::addToLogger(const mc_control::MCController & ctl, mc_rtc::Logger &
                      [this]()
                      {
                        so::kine::Orientation ori;
-                       ori.fromVector4(estimator_.getEstimatedOrientation());
+                       ori = estimator_.getEstimatedOrientation();
                        return ori.toQuaternion().inverse();
                      });
   logger.addLogEntry(category + "_realRobotState_x1",
@@ -592,7 +650,6 @@ void MCWaiko::addToLogger(const mc_control::MCController & ctl, mc_rtc::Logger &
   // logger.addLogEntry(category + "_constants_gains_gamma", [this]() -> double { return gamma_; });
   logger.addLogEntry(category + "_constants_gains_rho", [this]() -> double { return estimator_.getRho(); });
   logger.addLogEntry(category + "_constants_gains_contacts_mu", [this]() -> double { return mu_contacts_; });
-  logger.addLogEntry(category + "_constants_gains_contacts_gamma", [this]() -> double { return gamma_contacts_; });
   logger.addLogEntry(category + "_constants_gains_contacts_lambda", [this]() -> double { return lambda_contacts_; });
   // logger.addLogEntry(category + "_constants_gains_contacts_eta", [this]() -> double { return eta_contacts_; });
 

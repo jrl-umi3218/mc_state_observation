@@ -9,6 +9,15 @@
 namespace mc_state_observation
 {
 
+struct sortByForceRatio
+{
+  inline bool operator()(const odometry::LoContactWithSensor & contact1,
+                         const odometry::LoContactWithSensor & contact2) const noexcept
+  {
+    return (contact1.forceRatio() < contact2.forceRatio());
+  }
+};
+
 struct MCWaiko : public mc_observers::Observer
 {
   // we define MCKineticsObserver as a friend as it can instantiate this observer as a backup
@@ -223,21 +232,13 @@ protected:
 
   // gain associated with the correction of the orientation by the contact orientation
   double mu_contacts_ = 2;
-  // // gain associated with the correction of the tilt by the contact orientation
-  // double tau_contacts_ = 2;
   // gain associated with the correction of the position by the contact position
   double lambda_contacts_ = 2;
-  // gain associated with the correction of the orientation by the contact position
-  double gamma_contacts_ = 1;
 
   // gain associated with the correction of the orientation by the contact orientation
   double mu_contacts_final_ = 2;
-  // // gain associated with the correction of the tilt by the contact orientation
-  // double tau_contacts_final_ = 2;
   // gain associated with the correction of the position by the contact position
   double lambda_contacts_final_ = 2;
-  // gain associated with the correction of the orientation by the contact position
-  double gamma_contacts_final_ = 1;
 };
 
 } // namespace mc_state_observation
