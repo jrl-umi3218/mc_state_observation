@@ -141,9 +141,10 @@ protected:
   double finalAlpha_ = 5;
   ///  parameter related to the fast convergence of the tilt
   double finalBeta_ = 1;
-  double finalGamma_ = 1;
   /// parameter related to the orthogonality
   double finalRho_ = 2;
+  // /// gain of the gyro bias correction by the velocity
+  // double finalGamma_ = 1;
 
   /*!
    * initial value of the parameter related to the convergence of the linear velocity
@@ -152,9 +153,10 @@ protected:
   double alpha_ = 5;
   /// initial value of the parameter related to the fast convergence of the tilt
   double beta_ = 1;
-  double gamma_ = 1;
   /// initial value of the parameter related to the orthogonality
   double rho_ = 2;
+  // /// gain of the gyro bias correction by the velocity
+  // double gamma_ = 2;
 
   // flag indicating the variables we want in the resulting Kinematics object
   stateObservation::kine::Kinematics::Flags::Byte flagPoseVels_ =
@@ -219,15 +221,23 @@ protected:
   stateObservation::kine::Orientation measuredOri_ = stateObservation::kine::Orientation::zeroRotation();
   stateObservation::Vector measurements_;
 
+  // gain associated with the correction of the orientation by the contact orientation
   double mu_contacts_ = 2;
-  double tau_contacts_ = 2;
+  // // gain associated with the correction of the tilt by the contact orientation
+  // double tau_contacts_ = 2;
+  // gain associated with the correction of the position by the contact position
   double lambda_contacts_ = 2;
-  double eta_contacts_ = 2;
+  // gain associated with the correction of the orientation by the contact position
+  double gamma_contacts_ = 1;
 
+  // gain associated with the correction of the orientation by the contact orientation
   double mu_contacts_final_ = 2;
-  double tau_contacts_final_ = 2;
+  // // gain associated with the correction of the tilt by the contact orientation
+  // double tau_contacts_final_ = 2;
+  // gain associated with the correction of the position by the contact position
   double lambda_contacts_final_ = 2;
-  double eta_contacts_final_ = 2;
+  // gain associated with the correction of the orientation by the contact position
+  double gamma_contacts_final_ = 1;
 };
 
 } // namespace mc_state_observation

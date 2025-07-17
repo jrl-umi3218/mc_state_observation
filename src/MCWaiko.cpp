@@ -15,7 +15,7 @@ using OdometryType = measurements::OdometryType;
 using LoContactsManager = odometry::LeggedOdometryManager::ContactsManager;
 
 MCWaiko::MCWaiko(const std::string & type, double dt, bool asBackup)
-: mc_observers::Observer(type, dt), estimator_(dt, alpha_, beta_, 1 / (2 * M_PI), 1, false), odometryManager_(dt)
+: mc_observers::Observer(type, dt), estimator_(dt, alpha_, beta_, 1 / (2 * M_PI), false), odometryManager_(dt)
 {
   asBackup_ = asBackup;
 }
@@ -41,20 +41,18 @@ void MCWaiko::configure(const mc_control::MCController & ctl, const mc_rtc::Conf
   filterGainsConfig("initAlpha", alpha_);
   filterGainsConfig("initBeta", beta_);
   filterGainsConfig("initRho", rho_);
-  filterGainsConfig("initGamma", gamma_);
   filterGainsConfig("initMu", mu_contacts_);
-  filterGainsConfig("initTau", tau_contacts_);
+  filterGainsConfig("initGamma", gamma_contacts_);
   filterGainsConfig("initLambda", lambda_contacts_);
-  filterGainsConfig("initEta", eta_contacts_);
+  // filterGainsConfig("initEta", eta_contacts_);
 
   filterGainsConfig("finalAlpha", finalAlpha_);
   filterGainsConfig("finalBeta", finalBeta_);
   filterGainsConfig("finalRho", finalRho_);
-  filterGainsConfig("finalGamma", finalGamma_);
   filterGainsConfig("finalMu", mu_contacts_final_);
-  filterGainsConfig("finalTau", tau_contacts_final_);
+  filterGainsConfig("finalGamma", gamma_contacts_final_);
   filterGainsConfig("finalLambda", lambda_contacts_final_);
-  filterGainsConfig("finalEta", eta_contacts_final_);
+  // filterGainsConfig("finalEta", eta_contacts_final_);
 
   anchorFrameFunction_ = "KinematicAnchorFrame::" + ctl.robot(robot_).name();
   // if a user-defined anchor frame function is given, we use it instead
@@ -208,12 +206,12 @@ bool MCWaiko::run(const mc_control::MCController & ctl)
   {
     alpha_ = finalAlpha_;
     beta_ = finalBeta_;
+    // gamma_ = finalGamma_;
     rho_ = finalRho_;
-    gamma_ = finalGamma_;
-    lambda_contacts_ = lambda_contacts_final_;
     mu_contacts_ = mu_contacts_final_;
-    tau_contacts_ = tau_contacts_final_;
-    eta_contacts_ = eta_contacts_final_;
+    lambda_contacts_ = lambda_contacts_final_;
+    gamma_contacts_ = gamma_contacts_final_;
+    // eta_contacts_ = eta_contacts_final_;
   }
 
   odometryManager_.initLoop(ctl, logger, odometry::LeggedOdometryManager::RunParameters());
@@ -319,10 +317,14 @@ void MCWaiko::runTiltEstimator(const mc_control::MCController & ctl, const mc_rb
 
     so::kine::Kinematics imuContactKine = fbImuKine_.getInverse() * contactFbKine.getInverse();
     measuredOri_ = worldImuKine_fromContactRef.orientation.toMatrix3();
+
+    std::cout << std::endl << "Waiko: " << imuContactKine.position().transpose() << std::endl;
+
     estimator_.addContactInput(stateObservation::WaikoHumanoid::InputWaiko::ContactInput(
                                    worldImuKine_fromContactRef.orientation.toMatrix3(),
                                    worldImuKine_fromContactRef.position(), imuContactKine.position(),
-                                   worldContactRefKine.position(), 1, 1, 1, 1),
+                                   worldContactRefKine.position(), mu_contacts_ * mContact->lambda(),
+                                   lambda_contacts_ * mContact->lambda(), gamma_contacts_ * mContact->lambda()),
                                k);
   }
 
@@ -504,8 +506,11 @@ void MCWaiko::addToLogger(const mc_control::MCController & ctl, mc_rtc::Logger &
   category_ = category;
 
   odometryManager_.addToLogger(logger, category + "_leggedOdometryManager");
-  logger.addLogEntry(category + "_estimatedState_p",
+  logger.addLogEntry(category + "_estimatedState_pl",
                      [this]() -> so::Vector3 { return estimator_.getEstimatedLocPosition(); });
+
+  logger.addLogEntry(category + "_estimatedState_p",
+                     [this]() -> so::Vector3 { return R_0_fb_ * estimator_.getEstimatedLocPosition(); });
 
   logger.addLogEntry(category + "_estimatedState_gyroBias",
                      [this]() -> so::Vector3 { return estimator_.getEstimatedGyroBias(); });
@@ -518,15 +523,15 @@ void MCWaiko::addToLogger(const mc_control::MCController & ctl, mc_rtc::Logger &
 
   // logger.addLogEntry(category + "_debug_corrections_oriCorrection_",
   //                    [this]() -> const so::Vector3 & { return estimator_.getOriCorrection(); });
-  // logger.addLogEntry(category + "_debug_corrections_oriCorrFromOriMeas_",
-  //                    [this]() -> const so::Vector3 & { return estimator_.getOriCorrFromOriMeas(); });
-  // logger.addLogEntry(category + "_debug_corrections_posCorrFromContactPos_",
-  //                    [this]() -> const so::Vector3 & { return estimator_.getPosCorrectionFromContactPos(); });
-  // logger.addLogEntry(category + "_debug_corrections_oriCorrFromContactPos_",
-  //                    [this]() -> const so::Vector3 & { return estimator_.geOriCorrectionFromContactPos(); });
+  logger.addLogEntry(category + "_debug_corrections_oriCorrFromOriMeas_",
+                     [this]() -> const so::Vector3 & { return estimator_.getOriCorrFromOriMeas(); });
+  logger.addLogEntry(category + "_debug_corrections_posCorrFromContactPos_",
+                     [this]() -> const so::Vector3 & { return estimator_.getPosCorrectionFromContactPos(); });
+  logger.addLogEntry(category + "_debug_corrections_oriCorrFromContactPos_",
+                     [this]() -> const so::Vector3 & { return estimator_.geOriCorrectionFromContactPos(); });
 
   logger.addLogEntry(category + "_estimatedState_x2prime",
-                     [this]() -> so::Vector3 { return estimator_.getEstimatedTilt(); });
+                     [this]() -> so::Vector3 { return estimator_.getEstimatedTilt().normalized(); });
   logger.addLogEntry(category + "_estimatedState_R",
                      [this]()
                      {
@@ -584,12 +589,12 @@ void MCWaiko::addToLogger(const mc_control::MCController & ctl, mc_rtc::Logger &
 
   logger.addLogEntry(category + "_constants_gains_alpha", [this]() -> double { return estimator_.getAlpha(); });
   logger.addLogEntry(category + "_constants_gains_beta", [this]() -> double { return estimator_.getBeta(); });
-  logger.addLogEntry(category + "_constants_gains_gamma", [this]() -> double { return gamma_; });
+  // logger.addLogEntry(category + "_constants_gains_gamma", [this]() -> double { return gamma_; });
   logger.addLogEntry(category + "_constants_gains_rho", [this]() -> double { return estimator_.getRho(); });
   logger.addLogEntry(category + "_constants_gains_contacts_mu", [this]() -> double { return mu_contacts_; });
-  logger.addLogEntry(category + "_constants_gains_contacts_tau", [this]() -> double { return tau_contacts_; });
+  logger.addLogEntry(category + "_constants_gains_contacts_gamma", [this]() -> double { return gamma_contacts_; });
   logger.addLogEntry(category + "_constants_gains_contacts_lambda", [this]() -> double { return lambda_contacts_; });
-  logger.addLogEntry(category + "_constants_gains_contacts_eta", [this]() -> double { return eta_contacts_; });
+  // logger.addLogEntry(category + "_constants_gains_contacts_eta", [this]() -> double { return eta_contacts_; });
 
   logger.addLogEntry(category + "_debug_OdometryType", [this]() -> std::string
                      { return measurements::odometryTypeToSstring(odometryManager_.odometryType_); });
