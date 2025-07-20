@@ -1,22 +1,17 @@
 #pragma once
 
+#include <mc_control/MCController.h>
+#include <mc_observers/Observer.h>
 #include <boost/circular_buffer.hpp>
+#include <mc_state_observation/odometry/LeggedOdometryManager.h>
 
 #include <forward_list>
-#include <mc_state_observation/odometry/LeggedOdometryManager.h>
 #include <state-observation/observer/waiko-humanoid.hpp>
+#include <state-observation/tools/measurements-manager/Contact.hpp>
+#include <state-observation/tools/odometry/legged-odometry-manager.hpp>
 
 namespace mc_state_observation
 {
-
-struct sortByForceRatio
-{
-  inline bool operator()(const odometry::LoContactWithSensor & contact1,
-                         const odometry::LoContactWithSensor & contact2) const noexcept
-  {
-    return (contact1.forceRatio() < contact2.forceRatio());
-  }
-};
 
 struct MCWaiko : public mc_observers::Observer
 {
@@ -45,16 +40,13 @@ public:
   void updateNecessaryFramesOdom(const mc_control::MCController & ctl, const mc_rbdyn::Robot & odomRobot);
 
   /// @brief updates the pose and the velcoity of the floating base in the world frame using our estimation results
-  /// @param localWorldImuLinVel estimated local linear velocity of the IMU in the world frame
-  /// @param localWorldImuAngVelestimated measurement of the gyrometer
-  void updatePoseAndVel(const stateObservation::Vector3 & localWorldImuLinVel,
-                        const stateObservation::Vector3 & localWorldImuAngVel);
+  void updatePoseAndVel();
 
   /*! \brief update the robot pose in the world only for visualization purpose
    *
    * @param odomRobot Robot with the kinematics of the control robot but with updated joint values.
    */
-  void runTiltEstimator(const mc_control::MCController & ctl, const mc_rbdyn::Robot & odomRobot);
+  void runEstimator(const mc_control::MCController & ctl, const mc_rbdyn::Robot & odomRobot);
 
   /// @brief Updates the real robot and/or the IMU signal using our estimation results
   /// @param ctl Controller
@@ -62,7 +54,7 @@ public:
 
   /// @brief Sets the type of the odometry
   /// @param newOdometryType The new type of odometry to use.
-  void setOdometryType(measurements::OdometryType newOdometryType);
+  void setOdometryType(stateObservation::measurements::OdometryType newOdometryType);
 
   /// @brief Backup function that returns the estimated displacement of the floating base in the world wrt to the
   /// initial one over the backup interval.
@@ -86,7 +78,7 @@ public:
                                     unsigned long delayIters,
                                     double delayedOriGain);
 
-  inline const odometry::LeggedOdometryManager & odometryManager() { return odometryManager_; }
+  inline const stateObservation::odometry::LeggedOdometryManager & odometryManager() { return odometryManager_; }
 
 protected:
   /*! \brief update the robot pose in the world only for visualization purpose
@@ -129,7 +121,9 @@ protected:
 
 public:
   // estimated kinematics of the IMU in the world
-  stateObservation::kine::Kinematics correctedWorldImuKine_;
+  stateObservation::kine::Kinematics estimatedWorldImuKine_;
+  // estimated kinematics of the floating base in the world
+  stateObservation::kine::Kinematics estimatedWorldFbKine_;
 
 protected:
   // category to plot the estimator in
@@ -187,15 +181,12 @@ protected:
   // kinematics of the IMU in the world after the encoders update
   stateObservation::kine::Kinematics worldImuKine_;
 
+  stateObservation::kine::Kinematics estWorldImuKine_; ///< Estimated pose of the floating-base in world frame */
+
   /* Estimation results */
 
-  // The observed orientation of the IMU
-  stateObservation::kine::Orientation estimatedIMUOri_;
-  // estimated kinematics of the floating base in the world
-  stateObservation::kine::Kinematics correctedWorldFbKine_;
-
   /* Floating base's kinematics */
-  Eigen::Matrix3d R_0_fb_; // estimated orientation of the floating base in the world frame
+  // Eigen::Matrix3d R_0_fb_; // estimated orientation of the floating base in the world frame
   sva::PTransformd poseW_; ///< Estimated pose of the floating-base in world frame */
   sva::MotionVecd velW_; ///< Estimated velocity of the floating-base in world frame */
 
@@ -208,10 +199,9 @@ protected:
   int itersBeforeAnchorsVel_ = 10; // iteration from which we start to compute the velocity of the anchor frame. Avoids
                                    // initial jumps due to the finite differences.
 
-  /* Odometry parameters */
-  odometry::LeggedOdometryManager odometryManager_; // manager for the legged odometry
-
-  double contactDetectionThreshold_; // threshold used for the contacts detection
+  stateObservation::odometry::LeggedOdometryManager odometryManager_; // manager for the legged odometry
+  using ContactsManager = measurements::ContactsManager<measurements::ContactWithSensor>;
+  ContactsManager contactsManager_;
 
   /* Variables for the use as a backup */
   // indicates if the estimator is used as a backup or not

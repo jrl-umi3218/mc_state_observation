@@ -4,6 +4,7 @@
 #include <mc_state_observation/MCWaiko.h>
 #include <mc_state_observation/gui_helpers.h>
 #include <state-observation/observer/waiko-humanoid.hpp>
+#include <state-observation/tools/measurements-manager/measurements.hpp>
 #include <state-observation/tools/rigid-body-kinematics.hpp>
 
 namespace mc_state_observation
@@ -12,7 +13,7 @@ namespace mc_state_observation
 namespace so = stateObservation;
 
 using OdometryType = measurements::OdometryType;
-using LoContactsManager = odometry::LeggedOdometryManager::ContactsManager;
+using LoContactsManager = stateObservation::odometry::LeggedOdometryManager::ContactsManager;
 
 MCWaiko::MCWaiko(const std::string & type, double dt, bool asBackup)
 : mc_observers::Observer(type, dt), estimator_(dt, alpha_, beta_, 1 / (2 * M_PI), 0.5, 2), odometryManager_(dt)
@@ -58,34 +59,17 @@ void MCWaiko::configure(const mc_control::MCController & ctl, const mc_rtc::Conf
 
   std::string odometryTypeStr = static_cast<std::string>(odomConfig("odometryType"));
   // we set the odometry type now because it will be necessary for the next check
-  setOdometryType(measurements::stringToOdometryType(odometryTypeStr, name()));
+  setOdometryType(stateObservation::measurements::stringToOdometryType(odometryTypeStr));
 
   // specific configurations for the use of odometry.
-  bool verbose = config("verbose", true);
-  bool withYawEstimation = odomConfig("withYawEstimation", true);
   bool correctContacts = odomConfig("correctContacts", true);
 
-  // surfaces used for the contact detection. If the desired detection method doesn't use surfaces, we make sure this
-  // list is not filled in the configuration file to avoid the use of an undesired method.
-  std::vector<std::string> surfacesForContactDetection;
-  contactsConfig("surfacesForContactDetection", surfacesForContactDetection);
+  std::vector<std::string> surfacesForContactDetection =
+      contactsConfig("surfacesForContactDetection", std::vector<std::string>());
 
-  std::string contactsDetectionString = static_cast<std::string>(contactsConfig("contactsDetection"));
-  LoContactsManager::ContactsDetection contactsDetectionMethod =
-      odometryManager_.contactsManager().stringToContactsDetection(contactsDetectionString, name());
+  measurements::ContactsManagerSurfacesConfiguration contactsConf(name(), surfacesForContactDetection);
 
-  if(surfacesForContactDetection.size() > 0
-     && contactsDetectionMethod != LoContactsManager::ContactsDetection::Surfaces)
-  {
-    mc_rtc::log::error_and_throw<std::runtime_error>("Another type of contacts detection than Surfaces is currently "
-                                                     "used, please change it to 'Surfaces' or empty the "
-                                                     "surfacesForContactDetection variable");
-  }
-
-  odometry::LeggedOdometryManager::Configuration odometryConfig(robot_, name(), odometryManager_.odometryType_);
-  odometryConfig.velocityUpdate(odometry::LeggedOdometryManager::VelocityUpdate::NoUpdate)
-      .withYawEstimation(withYawEstimation)
-      .correctContacts(correctContacts);
+  contactsManager_.init(ctl, robot_, contactsConf);
 
   if(odomConfig.has("kappa"))
   {
@@ -97,52 +81,27 @@ void MCWaiko::configure(const mc_control::MCController & ctl, const mc_rtc::Conf
     double lambdaInf = odomConfig("lambdaInf");
     odometryManager_.lambdaInf(lambdaInf);
   }
-  if(contactsDetectionMethod == LoContactsManager::ContactsDetection::Surfaces)
-  {
-    if(surfacesForContactDetection.size() == 0)
-    {
-      mc_rtc::log::error_and_throw<std::runtime_error>("The list of surfaces for the contact detection is empty.");
-    }
+  const auto & imu = ctl.robot(robot_).bodySensor(imuSensor_);
+  const sva::PTransformd & imuXbs = imu.X_b_s();
+  so::kine::Kinematics parentImuKine =
+      conversions::kinematics::fromSva(imuXbs, so::kine::Kinematics::Flags::pose | so::kine::Kinematics::Flags::vel);
 
-    measurements::ContactsManagerSurfacesConfiguration contactsConf(name(), surfacesForContactDetection);
-    contactsConf.verbose(verbose);
+  // pose of the IMU's parent body in the world for the odometry robot
+  const sva::PTransformd & parentPoseW = ctl.realRobot().bodyPosW(imu.parentBody());
+  // velocity of the IMU's parent body in the world for the odometry robot
+  const sva::MotionVecd & v_0_imuParent =
+      ctl.realRobot().mbc().bodyVelW[ctl.realRobot().bodyIndexByName(imu.parentBody())];
 
-    if(contactsConfig.has("schmittTriggerLowerPropThreshold") && contactsConfig.has("schmittTriggerUpperPropThreshold"))
-    {
-      double schmittTriggerLowerPropThreshold = contactsConfig("schmittTriggerLowerPropThreshold");
-      double schmittTriggerUpperPropThreshold = contactsConfig("schmittTriggerUpperPropThreshold");
-      contactsConf.schmittTriggerPropThresholds(schmittTriggerLowerPropThreshold, schmittTriggerUpperPropThreshold);
-    }
+  // kinematics of the IMU's parent body in the world for the odometry robot
+  so::kine::Kinematics worldParentKine = conversions::kinematics::fromSva(parentPoseW, v_0_imuParent, true);
 
-    odometryManager_.init(ctl, odometryConfig, contactsConf);
-  }
-  if(contactsDetectionMethod == LoContactsManager::ContactsDetection::Sensors)
-  {
-    std::vector<std::string> forceSensorsToOmit = odomConfig("forceSensorsToOmit", std::vector<std::string>());
+  // pose and velocities of the IMU in the world frame for the odometry robot
+  worldImuKine_ = worldParentKine * parentImuKine;
+  stateObservation::odometry::LeggedOdometryManager::Configuration loConfig(
+      stateObservation::measurements::stringToOdometryType(odometryTypeStr));
+  loConfig.correctContacts(correctContacts);
 
-    measurements::ContactsManagerSensorsConfiguration contactsConf(name());
-    contactsConf.verbose(verbose).forceSensorsToOmit(forceSensorsToOmit);
-    if(contactsConfig.has("schmittTriggerLowerPropThreshold") && contactsConfig.has("schmittTriggerUpperPropThreshold"))
-    {
-      double schmittTriggerLowerPropThreshold = contactsConfig("schmittTriggerLowerPropThreshold");
-      double schmittTriggerUpperPropThreshold = contactsConfig("schmittTriggerUpperPropThreshold");
-      contactsConf.schmittTriggerPropThresholds(schmittTriggerLowerPropThreshold, schmittTriggerUpperPropThreshold);
-    }
-
-    odometryManager_.init(ctl, odometryConfig, contactsConf);
-  }
-  if(contactsDetectionMethod == LoContactsManager::ContactsDetection::Solver)
-  {
-    measurements::ContactsManagerSolverConfiguration contactsConf(name());
-    contactsConf.verbose(verbose);
-    if(contactsConfig.has("schmittTriggerLowerPropThreshold") && contactsConfig.has("schmittTriggerUpperPropThreshold"))
-    {
-      double schmittTriggerLowerPropThreshold = contactsConfig("schmittTriggerLowerPropThreshold");
-      double schmittTriggerUpperPropThreshold = contactsConfig("schmittTriggerUpperPropThreshold");
-      contactsConf.schmittTriggerPropThresholds(schmittTriggerLowerPropThreshold, schmittTriggerUpperPropThreshold);
-    }
-    odometryManager_.init(ctl, odometryConfig, contactsConf);
-  }
+  odometryManager_.init(loConfig, worldImuKine_.toVector(stateObservation::kine::Kinematics::Flags::pose));
 }
 
 void MCWaiko::reset(const mc_control::MCController & ctl)
@@ -186,7 +145,10 @@ void MCWaiko::reset(const mc_control::MCController & ctl)
   imuVelC_ = sva::MotionVecd::Zero();
   X_C_IMU_ = sva::PTransformd::Identity();
 
-  odometryManager_.reset();
+  stateObservation::kine::Kinematics initKine =
+      conversions::kinematics::fromSva(ctl.realRobot().posW(), stateObservation::kine::Kinematics::Flags::pose);
+
+  odometryManager_.replaceRobotPose(initKine.toVector(stateObservation::kine::Kinematics::Flags::pose));
 }
 
 bool MCWaiko::run(const mc_control::MCController & ctl)
@@ -203,8 +165,105 @@ bool MCWaiko::run(const mc_control::MCController & ctl)
     lambda_contacts_ = lambda_contacts_final_;
   }
 
-  odometryManager_.initLoop(ctl, logger, odometry::LeggedOdometryManager::RunParameters());
-  runTiltEstimator(ctl, odometryManager_.odometryRobot());
+  std::unordered_set<std::string> contactList;
+
+  auto onNewContact = [&contactList](measurements::ContactWithSensor & newContact)
+  { contactList.insert(newContact.name()); };
+
+  auto onNewContactOdom = [&realRobot, &logger, this](stateObservation::odometry::LoContact & newContact)
+  {
+    const std::string & surfaceName = contactsManager_.contact(newContact.name()).surface();
+    const sva::PTransformd & surfaceXbs = realRobot.surface(surfaceName).X_b_s();
+    so::kine::Kinematics parentSurfaceKine = conversions::kinematics::fromSva(
+        surfaceXbs, so::kine::Kinematics::Flags::pose | so::kine::Kinematics::Flags::vel);
+    const sva::PTransformd & parentPoseW = realRobot.bodyPosW(realRobot.surface(surfaceName).bodyName());
+    const sva::MotionVecd & v_0_contactParent =
+        realRobot.mbc().bodyVelW[realRobot.bodyIndexByName(realRobot.surface(surfaceName).bodyName())];
+    so::kine::Kinematics worldParentKine = conversions::kinematics::fromSva(parentPoseW, v_0_contactParent, true);
+
+    stateObservation::kine::Kinematics worldContactKine = worldParentKine * parentSurfaceKine;
+
+    newContact.contactBodyKine_ = worldContactKine.getInverse() * worldImuKine_;
+
+    newContact.lambda(contactsManager_.contact(newContact.name()).forceMeas().norm());
+
+    conversions::kinematics::addToLogger(logger, newContact.worldRefKine_,
+                                         "Waiko_contacts_" + newContact.name() + "_refPose");
+    conversions::kinematics::addToLogger(logger, newContact.worldBodyKineFromRef_,
+                                         "Waiko_contacts_" + newContact.name() + "_worldImuKineFromRef");
+    conversions::kinematics::addToLogger(logger, newContact.currentWorldKine_,
+                                         "Waiko_contacts_" + newContact.name() + "_currentWorldContactKine");
+    conversions::kinematics::addToLogger(logger, newContact.contactBodyKine_,
+                                         "Waiko_contacts_" + newContact.name() + "_contactImuKine_");
+    conversions::kinematics::addToLogger(logger, newContact.worldRefKineBeforeCorrection_,
+                                         "Waiko_contacts_" + newContact.name() + "_refPoseBeforeCorrection");
+    conversions::kinematics::addToLogger(logger, newContact.newIncomingWorldRefKine_,
+                                         "Waiko_contacts_" + newContact.name() + "_newIncomingWorldRefKine");
+
+    logger.addLogEntry("Waiko_contacts_" + newContact.name() + "_isSet", &newContact,
+                       [&newContact]() -> std::string { return newContact.isSet() ? "Set" : "notSet"; });
+
+    logger.addLogEntry("Waiko_contacts_" + newContact.name() + "_lambda", &newContact,
+                       [&newContact]() -> double { return newContact.lambda(); });
+    logger.addLogEntry("Waiko_contacts_" + newContact.name() + "_lifeTime", &newContact,
+                       [&newContact]() -> double { return newContact.lifeTime(); });
+    logger.addLogEntry("Waiko_contacts_" + newContact.name() + "_correctionWeightingCoeff", &newContact,
+                       [&newContact]() -> double { return newContact.correctionWeightingCoeff(); });
+  };
+  auto onMaintainedContact = [&contactList](measurements::ContactWithSensor & maintainedContact)
+  { contactList.insert(maintainedContact.name()); };
+
+  auto onMaintainedContactOdom = [&realRobot, this, &ctl](stateObservation::odometry::LoContact & maintainedContact)
+  {
+    const std::string & surfaceName = contactsManager_.contact(maintainedContact.name()).surface();
+    const sva::PTransformd & surfaceXbs = realRobot.surface(surfaceName).X_b_s();
+    so::kine::Kinematics parentSurfaceKine = conversions::kinematics::fromSva(
+        surfaceXbs, so::kine::Kinematics::Flags::pose | so::kine::Kinematics::Flags::vel);
+    const sva::PTransformd & parentPoseW = realRobot.bodyPosW(realRobot.surface(surfaceName).bodyName());
+    const sva::MotionVecd & v_0_contactParent =
+        realRobot.mbc().bodyVelW[realRobot.bodyIndexByName(realRobot.surface(surfaceName).bodyName())];
+    so::kine::Kinematics worldParentKine = conversions::kinematics::fromSva(parentPoseW, v_0_contactParent, true);
+
+    stateObservation::kine::Kinematics worldContactKine = worldParentKine * parentSurfaceKine;
+
+    maintainedContact.contactBodyKine_ = worldContactKine.getInverse() * worldImuKine_;
+    const stateObservation::Vector3 & forceMeas = contactsManager_.contact(maintainedContact.name()).forceMeas();
+    double forceRatio =
+        forceMeas.z()
+        / (forceMeas.head(2).norm() + 1e-6 * ctl.realRobot().mass() * stateObservation::cst::gravityConstant);
+
+    maintainedContact.lambda(forceRatio);
+  };
+
+  auto onRemovedContact = [](measurements::ContactWithSensor &) {};
+  auto onRemovedContactOdom = [&logger](stateObservation::odometry::LoContact & removedContact)
+  {
+    conversions::kinematics::removeFromLogger(logger, removedContact.worldRefKine_);
+    conversions::kinematics::removeFromLogger(logger, removedContact.worldRefKineBeforeCorrection_);
+    conversions::kinematics::removeFromLogger(logger, removedContact.worldBodyKineFromRef_);
+    conversions::kinematics::removeFromLogger(logger, removedContact.currentWorldKine_);
+    conversions::kinematics::removeFromLogger(logger, removedContact.contactBodyKine_);
+    conversions::kinematics::removeFromLogger(logger, removedContact.newIncomingWorldRefKine_);
+    logger.removeLogEntries(&removedContact);
+  };
+
+  contactsManager_.updateContacts(ctl, robot_, onNewContact, onMaintainedContact, onRemovedContact);
+  stateObservation::odometry::LeggedOdometryManager::ContactUpdateFunctions contactUpdateFunctions =
+      stateObservation::odometry::LeggedOdometryManager::ContactUpdateFunctions()
+          .onNewContact(onNewContactOdom)
+          .onMaintainedContact(onMaintainedContactOdom)
+          .onRemovedContact(onRemovedContactOdom);
+
+  odometryManager_.initLoop(contactList, contactUpdateFunctions, &velW_.linear(), &velW_.angular());
+
+  runEstimator(ctl, realRobot);
+
+  sva::PTransformd poseW;
+  poseW.translation() = estWorldImuKine_.position();
+  poseW.rotation() = estWorldImuKine_.orientation.toMatrix3().transpose();
+  // The input robot copies the real robot to update the encoder values.
+  // Then its floating base is brung back to the origin of the world frame and given zero velocities and accelerations
+  // in order to ease the computations.
 
   iter_++;
 
@@ -242,25 +301,10 @@ void MCWaiko::updateNecessaryFramesOdom(const mc_control::MCController & ctl, co
 
   // position and linear velocity of the anchor point in the frame of the IMU.
   imuAnchorKine_ = odometryManager_.getAnchorKineIn(worldImuKine_);
-
-  if(odometryManager_.anchorPointMethodChanged_) { imuAnchorKine_.linVel().setZero(); }
 }
 
-void MCWaiko::runTiltEstimator(const mc_control::MCController & ctl, const mc_rbdyn::Robot & odomRobot)
+void MCWaiko::runEstimator(const mc_control::MCController & ctl, const mc_rbdyn::Robot & odomRobot)
 {
-  if(ctl.realRobot(robot_).hasBodySensor("VisualGyroSensor"))
-  {
-    auto & logger = (const_cast<mc_control::MCController &>(ctl)).logger();
-
-    // removeDelayedOriMeasLogs(logger);
-    // if(ctl.datastore().has("VisualGyroSensorDelay"))
-    // {
-    //   const mc_rbdyn::BodySensor & visualGyro = ctl.realRobot(robot_).bodySensor("VisualGyroSensor");
-    //   delayedOriMeasurementHandler(ctl, visualGyro.orientation().toRotationMatrix(),
-    //                                ctl.datastore().get<unsigned long>("VisualGyroSensorDelay"), mu_gyroscope_);
-    // }
-  }
-
   updateNecessaryFramesOdom(ctl, odomRobot);
 
   const auto & imu = ctl.robot(robot_).bodySensor(imuSensor_);
@@ -292,124 +336,33 @@ void MCWaiko::runTiltEstimator(const mc_control::MCController & ctl, const mc_rb
     yv_ = -imu.angularVelocity().cross(imuAnchorKine_.position()) - imuAnchorKine_.linVel();
   }
 
-  if(odometryManager_.anchorPointMethodChanged_)
+  estimator_.setInput(yv_, imu.linearAcceleration(), imu.angularVelocity(), k, false);
+
+  if(odometryManager_.maintainedContacts().size() > 0)
   {
-    estimator_.setInput(yv_, imu.linearAcceleration(), imu.angularVelocity(), k, true);
+    stateObservation::kine::Kinematics worldImuKineFromAnchor = odometryManager_.getWorldBodyKineFromAnchor(true, true);
+
+    estimator_.addContactInput(so::WaikoHumanoid::InputWaiko::ContactInput(
+                                   worldImuKineFromAnchor.orientation.toMatrix3(), worldImuKineFromAnchor.position()),
+                               k);
   }
-  else { estimator_.setInput(yv_, imu.linearAcceleration(), imu.angularVelocity(), k, false); }
-
-  stateObservation::kine::Kinematics worldFbKineFromAnchor;
-
-  worldFbKineFromAnchor.position = odometryManager_.getWorldFbPosFromAnchor();
-
-  double sumLambdasOri = 0.0;
-  std::set<std::reference_wrapper<odometry::LoContactWithSensor>, sortByForceRatio> oriOdometryContacts_;
-
-  for(auto * mContact : odometryManager_.maintainedContacts())
-  {
-    if(mContact->isSet())
-    {
-      mContact->useForOrientation_ = true;
-      oriOdometryContacts_.insert(*mContact);
-    }
-  }
-
-  // contacts are sorted from the lowest force to the highest force
-  while(oriOdometryContacts_.size() > 2)
-  {
-    (*oriOdometryContacts_.begin()).get().useForOrientation_ = false;
-    oriOdometryContacts_.erase(oriOdometryContacts_.begin());
-  }
-
-  // the position of the floating base in the world can be obtained by a weighted average of the estimations for each
-  // contact
-  for(odometry::LoContactWithSensor & oriOdomContact : oriOdometryContacts_)
-  {
-    sumLambdasOri += oriOdomContact.lambda();
-
-    oriOdomContact.worldFbKineFromRef_.orientation = so::Matrix3(
-        oriOdomContact.worldRefKine_.orientation.toMatrix3() * oriOdomContact.contactFbKine_.orientation.toMatrix3());
-  }
-
-  worldFbKineFromAnchor.orientation.setZeroRotation();
-
-  if(oriOdometryContacts_.size() == 1)
-  {
-    // the orientation can be updated using 1 contact
-    worldFbKineFromAnchor.orientation = oriOdometryContacts_.begin()->get().worldFbKineFromRef_.orientation;
-  }
-  if(oriOdometryContacts_.size() == 2) // the orientation can be updated using 2 contacts
-  {
-    const auto & contact1 = (*oriOdometryContacts_.begin()).get();
-    const auto & contact2 = (*std::next(oriOdometryContacts_.begin(), 1)).get();
-
-    const auto & R1 = contact1.worldFbKineFromRef_.orientation.toMatrix3();
-    const auto & R2 = contact2.worldFbKineFromRef_.orientation.toMatrix3();
-
-    double u = contact2.lambda() / sumLambdasOri;
-
-    /*
-    \tilde{\boldsymbol{R}} = \boldsymbol{R}^{T}_{\mathcal{I}, 1} \boldsymbol{R}_{\mathcal{I}, 2}
-    \boldsymbol{R}_{\mathcal{I}, \text{avg}} =
-     \boldsymbol{R}_{\mathcal{I}, 1} \text{exp} \left( \lambda_{2} \text{vec}\left(\text{log} \left(
-    \tilde{\boldsymbol{R}}\right)\right)  \right)
-    */
-    stateObservation::Matrix3 diffRot = R1.transpose() * R2;
-
-    stateObservation::Vector3 diffRotVector =
-        stateObservation::kine::skewSymmetricToRotationVector(diffRot - diffRot.transpose());
-
-    worldFbKineFromAnchor.orientation = stateObservation::Matrix3(
-        R1 * so::kine::rotationVectorToRotationMatrix(u / 2.0 * diffRotVector)); // = R1 * exp( (1 - u) * log(R1^T R2) )
-  }
-
-  const so::kine::Kinematics worldImuKine_fromContactRef = worldFbKineFromAnchor * fbImuKine_;
-
-  estimator_.addContactInput(
-      so::WaikoHumanoid::InputWaiko::ContactInput(worldImuKine_fromContactRef.orientation.toMatrix3(),
-                                                  worldImuKine_fromContactRef.position()),
-      k);
-
-  // for(auto * mContact : odometryManager_.maintainedContacts())
-  // {
-  //   const so::kine::Kinematics & worldContactRefKine = mContact->worldRefKine_;
-  //   const so::kine::Kinematics & contactFbKine = mContact->contactFbKine_;
-  //   const so::kine::Kinematics worldImuKine_fromContactRef = worldContactRefKine * contactFbKine * fbImuKine_;
-
-  //   so::kine::Kinematics imuContactKine = fbImuKine_.getInverse() * contactFbKine.getInverse();
-  //   measuredOri_ = worldImuKine_fromContactRef.orientation.toMatrix3();
-
-  //   std::cout << std::endl << "Waiko: " << imuContactKine.position().transpose() << std::endl;
-
-  //   estimator_.addContactInput(stateObservation::WaikoHumanoid::InputWaiko::ContactInput(
-  //                                  worldImuKine_fromContactRef.orientation.toMatrix3(),
-  //                                  worldImuKine_fromContactRef.position(), imuContactKine.position(),
-  //                                  worldContactRefKine.position(), mu_contacts_ * mContact->lambda(),
-  //                                  lambda_contacts_ * mContact->lambda(), gamma_contacts_ * mContact->lambda()),
-  //                              k);
-  // }
 
   // estimation of the state with the complementary filters
   estimator_.getEstimatedState(k + 1);
 
-  // retrieving the estimated orientation
-  estimatedIMUOri_ = estimator_.getEstimatedOrientation();
+  so::kine::LocalKinematics estimatedWorldImuLocKine;
+  estimatedWorldImuLocKine.position = estimator_.getEstimatedLocPosition();
+  estimatedWorldImuLocKine.orientation = estimator_.getEstimatedOrientation();
+  estimatedWorldImuLocKine.linVel = estimator_.getEstimatedLocLinVel();
+  estimatedWorldImuLocKine.angVel = imu.angularVelocity();
 
-  // Estimated orientation of the floating base in the world (especially the tilt)
-  R_0_fb_ = estimatedIMUOri_.toMatrix3() * fbImuKine_.orientation.toMatrix3().transpose();
+  estimatedWorldImuKine_ = estimatedWorldImuLocKine;
 
-  // retrieving the estimated position (we estimated the local position of the IMU in the world)
-  // const so::Vector3 worldImuPos = R_0_fb_ *  xk_.segment<3>(6);
+  odometryManager_.run(stateObservation::odometry::LeggedOdometryManager::KineParams(estWorldImuKine_)
+                           .attitudeMeas(estimatedWorldImuLocKine.orientation.toMatrix3())
+                           .positionMeas(estimatedWorldImuKine_.position()));
 
-  // so::Vector3 worldFbPos = worldImuPos - R_0_fb_ * fbImuKine_.position();
-  so::Vector3 worldFbPos =
-      estimatedIMUOri_
-      * (estimator_.getEstimatedLocPosition() - fbImuKine_.orientation.toMatrix3().transpose() * fbImuKine_.position());
-
-  odometryManager_.run(
-      ctl, odometry::LeggedOdometryManager::KineParams(poseW_).attitudeMeas(R_0_fb_).positionMeas(worldFbPos));
-
-  updatePoseAndVel(estimator_.getEstimatedLocLinVel(), imu.angularVelocity());
+  updatePoseAndVel();
 
   /* Backups */
 
@@ -417,29 +370,15 @@ void MCWaiko::runTiltEstimator(const mc_control::MCController & ctl, const mc_rb
   backupFbKinematics_.push_back(conversions::kinematics::fromSva(poseW_, so::kine::Kinematics::Flags::pose));
 }
 
-void MCWaiko::updatePoseAndVel(const so::Vector3 & localWorldImuLinVel, const so::Vector3 & localWorldImuAngVel)
+void MCWaiko::updatePoseAndVel()
 {
-  correctedWorldFbKine_.position = poseW_.translation();
-  correctedWorldFbKine_.orientation = R_0_fb_; // which is equal to poseW_.rotation().transpose();
+  estimatedWorldFbKine_ = estimatedWorldImuKine_ * fbImuKine_.getInverse();
 
-  // we use the newly estimated orientation and local linear velocity of the IMU to obtain the one of the floating
-  // base.
-  correctedWorldImuKine_ =
-      correctedWorldFbKine_
-      * fbImuKine_; // corrected pose of the imu in the world. This step is used only to get the
-                    // pose of the IMU in the world that is required for the kinematics composition.
+  poseW_.translation() = estimatedWorldFbKine_.position();
+  poseW_.rotation() = estimatedWorldFbKine_.orientation.toMatrix3().transpose();
 
-  correctedWorldImuKine_.linVel = correctedWorldImuKine_.orientation * localWorldImuLinVel;
-  correctedWorldImuKine_.angVel = correctedWorldImuKine_.orientation * localWorldImuAngVel;
-
-  correctedWorldFbKine_ = correctedWorldImuKine_ * fbImuKine_.getInverse();
-
-  velW_.linear() = correctedWorldFbKine_.linVel();
-  velW_.angular() = correctedWorldFbKine_.angVel();
-
-  // the velocity of the odometry robot was obtained using finite differences. We give it our estimated velocity which
-  // is more accurate.
-  odometryManager_.replaceRobotVelocity(velW_);
+  velW_.linear() = estimatedWorldFbKine_.linVel();
+  velW_.angular() = estimatedWorldFbKine_.angVel();
 }
 
 void MCWaiko::update(mc_control::MCController & ctl)
@@ -459,8 +398,8 @@ void MCWaiko::update(mc_control::MCController & ctl)
     auto & imu = const_cast<mc_rbdyn::BodySensor &>(robot.bodySensor(imuSensor_));
     auto & rimu = const_cast<mc_rbdyn::BodySensor &>(realRobot.bodySensor(imuSensor_));
 
-    imu.orientation(estimatedIMUOri_.toQuaternion().inverse());
-    rimu.orientation(estimatedIMUOri_.toQuaternion().inverse());
+    imu.orientation(estimatedWorldImuKine_.orientation.toQuaternion().inverse());
+    rimu.orientation(estimatedWorldImuKine_.orientation.toQuaternion().inverse());
   }
 }
 
@@ -503,58 +442,10 @@ const so::kine::Kinematics MCWaiko::backupFb(boost::circular_buffer<so::kine::Ki
   return koBackupFbKinematics->back();
 }
 
-// void MCWaiko::delayedOriMeasurementHandler(const mc_control::MCController & ctl,
-//                                             const so::Matrix3 & meas,
-//                                             unsigned long delay,
-//                                             double gain)
-// {
-//   const auto & iterationsBuffer = estimator_.getIterationsBuffer();
-//   // Let us denote k the time on which the orientation measurement started to be computed, but is still not
-//   available.
-//   // We replay the estimation at time k using the buffered state and measurements, this time using the newly
-//   available
-//   // orientation measurement. We then apply the transformation between the time k+1 and the current iteration.
-
-//   delayedOriMeas_.meas_ = meas;
-//   delayedOriMeas_.gain_ = gain;
-//   delayedOriMeas_.updatedPoseWithoutMeas_ = iterationsBuffer.at(delay - 1).finalPose_;
-
-//   mc_rtc::log::info("Received an orientation measurement with a delay of " + std::to_string(delay) + "
-//   iterations"); if(iterationsBuffer.empty())
-//   {
-//     mc_rtc::log::warning("A delayed measurement was received although the estimation just started. Please make sure
-//     "
-//                          "that you pass a delayed orientation measurement. The measurement will be ignored.");
-//     return;
-//   }
-//   if(delay > iterationsBuffer.size() || iterationsBuffer.size() == 0)
-//   {
-//     mc_rtc::log::warning("The orientation measurement is too old, the measurement will be ignored.");
-//     return;
-//   }
-
-//   // we replay the estimation made by the filter but this time with the orientation measurement.
-//   so::Vector replayedWorldImuEstWithOri = estimator_.replayIterationsWithDelayedOri(delay, meas, gain);
-//   so::kine::Kinematics replayedWorldImuKineEst(replayedWorldImuEstWithOri.tail(7),
-//   so::kine::Kinematics::Flags::pose);
-
-//   // we get the new kinematics of the floating base in the world frame from the ones of the IMU
-//   so::Matrix3 replayedWorldFbOri =
-//       replayedWorldImuKineEst.orientation.toMatrix3() * fbImuKine_.orientation.toMatrix3().transpose();
-//   so::Vector3 replayedWorldFbPos = replayedWorldImuKineEst.position() - replayedWorldFbOri * fbImuKine_.position();
-
-//   sva::PTransformd newWorldFbPose_(replayedWorldFbOri.transpose(), replayedWorldFbPos);
-//   odometryManager_.replaceRobotPose(newWorldFbPose_);
-
-//   auto & logger = (const_cast<mc_control::MCController &>(ctl)).logger();
-//   delayedOriMeas_.updatedPoseWithMeas_ = iterationsBuffer.at(delay - 1).finalPose_;
-//   addDelayedOriMeasLogs(logger, name());
-// }
-
-void MCWaiko::setOdometryType(OdometryType newOdometryType)
+void MCWaiko::setOdometryType(stateObservation::measurements::OdometryType newOdometryType)
 {
-  if((newOdometryType != measurements::OdometryType::Odometry6d)
-     && (newOdometryType != measurements::OdometryType::Flat))
+  if((newOdometryType != stateObservation::measurements::OdometryType::Odometry6d)
+     && (newOdometryType != stateObservation::measurements::OdometryType::Flat))
   {
     mc_rtc::log::error_and_throw<std::runtime_error>("Please choose between these two odometry types: [6D, Flat]");
   }
@@ -566,12 +457,11 @@ void MCWaiko::addToLogger(const mc_control::MCController & ctl, mc_rtc::Logger &
 {
   category_ = category;
 
-  odometryManager_.addToLogger(logger, category + "_leggedOdometryManager");
   logger.addLogEntry(category + "_estimatedState_pl",
                      [this]() -> so::Vector3 { return estimator_.getEstimatedLocPosition(); });
 
   logger.addLogEntry(category + "_estimatedState_p",
-                     [this]() -> so::Vector3 { return R_0_fb_ * estimator_.getEstimatedLocPosition(); });
+                     [this]() -> so::Vector3 { return estimatedWorldImuKine_.position(); });
 
   logger.addLogEntry(category + "_estimatedState_x1",
                      [this]() -> so::Vector3 { return estimator_.getEstimatedLocLinVel(); });
@@ -654,9 +544,7 @@ void MCWaiko::addToLogger(const mc_control::MCController & ctl, mc_rtc::Logger &
   // logger.addLogEntry(category + "_constants_gains_contacts_eta", [this]() -> double { return eta_contacts_; });
 
   logger.addLogEntry(category + "_debug_OdometryType", [this]() -> std::string
-                     { return measurements::odometryTypeToSstring(odometryManager_.odometryType_); });
-
-  logger.addLogEntry(category + "_IMU_world_orientation", [this]() { return estimatedIMUOri_.toQuaternion(); });
+                     { return stateObservation::measurements::odometryTypeToSstring(odometryManager_.odometryType_); });
 
   logger.addLogEntry(category + "_IMU_AnchorFrame_pose", [this]() -> const sva::PTransformd & { return X_C_IMU_; });
   logger.addLogEntry(category + "_IMU_AnchorFrame_linVel", [this]() -> const sva::MotionVecd & { return imuVelC_; });
@@ -823,11 +711,13 @@ void MCWaiko::addToLogger(const mc_control::MCController & ctl, mc_rtc::Logger &
                      });
 
   conversions::kinematics::addToLogger(logger, worldImuKine_, category + "_debug_worldImuKine");
+  conversions::kinematics::addToLogger(logger, odometryManager_.bodyKine_, category + "_debug_worldImuKineOdom");
+
   conversions::kinematics::addToLogger(logger, imuAnchorKine_, category + "_debug_imuAnchorKine_");
   conversions::kinematics::addToLogger(logger, fbImuKine_, category + "_debug_fbImuKine_");
 
   conversions::kinematics::addToLogger(logger, worldFbKine_, category + "_debug_worldFbKine_");
-  conversions::kinematics::addToLogger(logger, correctedWorldImuKine_, category + "_debug_correctedWorldImuKine_");
+  conversions::kinematics::addToLogger(logger, estimatedWorldImuKine_, category + "_debug_correctedWorldImuKine_");
 }
 
 void MCWaiko::removeFromLogger(mc_rtc::Logger & logger, const std::string & category)

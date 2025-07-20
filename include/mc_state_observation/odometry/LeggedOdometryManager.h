@@ -504,6 +504,13 @@ public:
    */
   const stateObservation::Vector3 & getWorldRefAnchorPos();
 
+  /// @brief Updates the position of the floating base in the world.
+  /// @details For each maintained contact, we compute the position of the floating base in the contact frame, we
+  /// then compute the weighted average wrt to the measured forces at the contact and obtain the estimated
+  /// translation from the anchor point to the floating base.  We apply this translation to the reference position
+  /// of the anchor frame in the world to obtain the new position of the floating base in the word.
+  stateObservation::Vector3 getWorldFbPosFromAnchor();
+
   /// @brief Changes the type of the odometry
   /// @details Version meant to be called by the observer using the odometry during the run through the gui.
   /// @param newOdometryType The string naming the new type of odometry to use.
@@ -576,13 +583,6 @@ private:
   /// @param ctl Controller.
   /// @param runParams Parameters used to run the legged odometry.
   void updateFbAndContacts(const mc_control::MCController & ctl, const KineParams & params);
-
-  /// @brief Updates the position of the floating base in the world.
-  /// @details For each maintained contact, we compute the position of the floating base in the contact frame, we
-  /// then compute the weighted average wrt to the measured forces at the contact and obtain the estimated
-  /// translation from the anchor point to the floating base.  We apply this translation to the reference position
-  /// of the anchor frame in the world to obtain the new position of the floating base in the word.
-  stateObservation::Vector3 getWorldFbPosFromAnchor();
 
   /// @brief Corrects the reference pose of the contacts after the update of the floating base.
   /// @details The new reference pose is obtained by forward kinematics from the updated floating base.

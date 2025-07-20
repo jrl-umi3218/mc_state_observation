@@ -173,7 +173,8 @@ void MCViking::reset(const mc_control::MCController & ctl)
   so::Vector3 initX2 = initWorldImuKine.orientation.toMatrix3().transpose() * so::Vector3::UnitZ();
 
   estimator_.initEstimator(so::Vector3::Zero(), initX2, stateObservation::Vector3::Zero(),
-                           initWorldImuKine.orientation.toVector4(), initWorldImuKine.position());
+                           initWorldImuKine.orientation.toVector4(),
+                           initWorldImuKine.orientation.toMatrix3().transpose() * initWorldImuKine.position());
 
   anchorFrameJumped_ = false;
   iter_ = 0;
