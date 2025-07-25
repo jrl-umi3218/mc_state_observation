@@ -28,7 +28,8 @@ void MocapVisualizer::configure(const mc_control::MCController & ctl, const mc_r
     // csvPath_ = static_cast<std::string>(config("csvPath"));
 
     std::string projectName = static_cast<std::string>(config("projectName"));
-    csvPath_ = "/home/arnaud/devel/src/MocapAligner/Projects/" + projectName + "/output_data/resultMocapLimbData.csv";
+    csvPath_ = "/home/arnaud/devel/src/data_manipulation_tools/Projects/" + projectName
+               + "/output_data/resultMocapLimbData.csv";
 
     using ContactsManager = measurements::ContactsManager<MocapContact>;
 
@@ -88,9 +89,8 @@ void MocapVisualizer::reset(const mc_control::MCController & ctl)
 
     my_robots_ = mc_rbdyn::Robots::make();
     my_robots_->robotCopy(robot, robot.name());
-    ctl.gui()->addElement(
-        {"Robots"},
-        mc_rtc::gui::Robot("MocapVisualizer", [this]() -> const mc_rbdyn::Robot & { return my_robots_->robot(); }));
+    ctl.gui()->addElement({"Robots"}, mc_rtc::gui::Robot("MocapVisualizer", [this]() -> const mc_rbdyn::Robot &
+                                                         { return my_robots_->robot(); }));
 
     extractTransformFromMocap();
   }
@@ -197,34 +197,28 @@ void MocapVisualizer::addToLogger(const mc_control::MCController &,
 {
   if(!firstRun_)
   {
-    logger.addLogEntry(category + "_mocap_worldBody_ori",
-                       [this]() -> const Eigen::Quaterniond
+    logger.addLogEntry(category + "_mocap_worldBody_ori", [this]() -> const Eigen::Quaterniond
                        { return mocap_worldBodyKine_.at(currentIter_ - 1).orientation.toQuaternion().inverse(); });
     logger.addLogEntry(category + "_mocap_worldBody_pos",
                        [this]() { return mocap_worldBodyKine_.at(currentIter_ - 1).position(); });
 
-    logger.addLogEntry(category + "_worldFb_ori",
-                       [this]() -> const Eigen::Quaterniond
+    logger.addLogEntry(category + "_worldFb_ori", [this]() -> const Eigen::Quaterniond
                        { return worldFbKine_.orientation.toQuaternion().inverse(); });
     logger.addLogEntry(category + "_worldFb_pos", [this]() { return worldFbKine_.position(); });
 
-    logger.addLogEntry(category + "_mocap_BodyTransformation_ori",
-                       [this]() -> const Eigen::Quaterniond
+    logger.addLogEntry(category + "_mocap_BodyTransformation_ori", [this]() -> const Eigen::Quaterniond
                        { return mocapTransforms_.at(currentIter_ - 1).orientation.toQuaternion().inverse(); });
     logger.addLogEntry(category + "_mocap_BodyTransformation_pos",
                        [this]() { return mocapTransforms_.at(currentIter_ - 1).position(); });
     logger.addLogEntry(category + "_mocap_fbPose_posW", [this]() -> const sva::PTransformd & { return X_0_fb_; });
-    logger.addLogEntry(category + "_mocap_fbPose_yaw",
-                       [this]() -> double
+    logger.addLogEntry(category + "_mocap_fbPose_yaw", [this]() -> double
                        { return -stateObservation::kine::rotationMatrixToYawAxisAgnostic(X_0_fb_.rotation()); });
 
-    logger.addLogEntry(category + "_mocap_bodyFbPose_ori",
-                       [this]() -> const Eigen::Quaterniond
+    logger.addLogEntry(category + "_mocap_bodyFbPose_ori", [this]() -> const Eigen::Quaterniond
                        { return bodyFbKine_.orientation.toQuaternion().inverse(); });
     logger.addLogEntry(category + "_mocap_bodyFbPose_pos",
                        [this]() -> const Eigen::Vector3d & { return bodyFbKine_.position(); });
-    logger.addLogEntry(category + "_mocap_datasOverlapping",
-                       [this]() -> std::string
+    logger.addLogEntry(category + "_mocap_datasOverlapping", [this]() -> std::string
                        { return overlappingDatas_ == 1 ? "Datas overlap" : "Datas not overlapping"; });
   }
 }
