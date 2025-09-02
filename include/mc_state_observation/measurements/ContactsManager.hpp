@@ -187,7 +187,10 @@ void ContactsManager<ContactT>::findContactsFromSolver(const mc_control::MCContr
         show_new_contacts = true;
         onNewContact(contactWS);
       }
-      else { onMaintainedContact(contactWS); }
+      else
+      {
+        onMaintainedContact(contactWS);
+      }
       if(verbose_)
       {
         if(!new_contact_set.empty()) { new_contact_set += ", "; }
