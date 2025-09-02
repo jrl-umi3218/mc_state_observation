@@ -7,7 +7,9 @@ set(mc_state_observation_HDR
 add_library(mc_state_observation SHARED ${mc_state_observation_SRC}
                                         ${mc_state_observation_HDR})
 
-target_link_libraries(mc_state_observation PUBLIC mc_rtc::mc_control)
+target_link_libraries(
+  mc_state_observation PUBLIC mc_rtc::mc_control SpaceVecAlg::SpaceVecAlg
+                              state-observation::state-observation)
 install(
   TARGETS mc_state_observation
   EXPORT "${TARGETS_EXPORT_NAME}"
@@ -25,8 +27,9 @@ endmacro()
 
 macro(add_so_observer observer_name)
   add_simple_observer(${observer_name})
-  target_link_libraries(${observer_name}
-                        PUBLIC state-observation::state-observation)
+  target_link_libraries(
+    ${observer_name} PUBLIC state-observation::state-observation
+                            mc_state_observation)
 endmacro()
 
 macro(add_observer_with_filter observer_name)
@@ -39,6 +42,7 @@ macro(add_observer_with_filter observer_name)
 endmacro()
 
 add_so_observer(AttitudeObserver)
+add_so_observer(TiltObserver)
 
 if(WITH_ROS_OBSERVERS)
   add_simple_observer(MocapObserver)
