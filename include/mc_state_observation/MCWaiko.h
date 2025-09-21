@@ -181,8 +181,6 @@ protected:
   // kinematics of the IMU in the world after the encoders update
   stateObservation::kine::Kinematics worldImuKine_;
 
-  stateObservation::kine::Kinematics estWorldImuKine_; ///< Estimated pose of the floating-base in world frame */
-
   /* Estimation results */
 
   /* Floating base's kinematics */
@@ -229,6 +227,11 @@ protected:
   double mu_contacts_final_ = 2;
   // gain associated with the correction of the position by the contact position
   double lambda_contacts_final_ = 2;
+
+  // zero frame transformation
+  sva::PTransformd zeroPose_;
+  // zero velocity or acceleration
+  sva::MotionVecd zeroMotion_;
 };
 
 } // namespace mc_state_observation

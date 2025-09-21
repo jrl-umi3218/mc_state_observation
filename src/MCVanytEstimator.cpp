@@ -494,17 +494,17 @@ void MCVanytEstimator::setOdometryType(OdometryType newOdometryType)
 
 void MCVanytEstimator::addDelayedOriMeasLogs(mc_rtc::Logger & logger, const std::string & category)
 {
-  logger.addLogEntry(category + "_delayedOriMeas_" + "meas", &delayedOriMeas_,
-                     [this]() -> Eigen::Quaterniond { return Eigen::Quaterniond(delayedOriMeas_.meas_).inverse(); });
-  logger.addLogEntry(category + "_delayedOriMeas_" + "gain", &delayedOriMeas_,
-                     [this]() -> double { return delayedOriMeas_.gain_; });
-  logger.addLogEntry(category + "_delayedOriMeas_" + "delayedoriRecieved", &delayedOriMeas_,
-                     []() -> std::string { return "received"; });
+  // logger.addLogEntry(category + "_delayedOriMeas_" + "meas", &delayedOriMeas_,
+  //                    [this]() -> Eigen::Quaterniond { return Eigen::Quaterniond(delayedOriMeas_.meas_).inverse(); });
+  // logger.addLogEntry(category + "_delayedOriMeas_" + "gain", &delayedOriMeas_,
+  //                    [this]() -> double { return delayedOriMeas_.gain_; });
+  // logger.addLogEntry(category + "_delayedOriMeas_" + "delayedoriRecieved", &delayedOriMeas_,
+  //                    []() -> std::string { return "received"; });
 
-  conversions::kinematics::addToLogger(logger, delayedOriMeas_.updatedPoseWithoutMeas_,
-                                       category + "_delayedOriMeas_" + "updatedPoseWithoutMeas");
-  conversions::kinematics::addToLogger(logger, delayedOriMeas_.updatedPoseWithMeas_,
-                                       category + "_delayedOriMeas_" + "updatedPoseWithMeas");
+  // conversions::kinematics::addToLogger(logger, delayedOriMeas_.updatedPoseWithoutMeas_,
+  //                                      category + "_delayedOriMeas_" + "updatedPoseWithoutMeas");
+  // conversions::kinematics::addToLogger(logger, delayedOriMeas_.updatedPoseWithMeas_,
+  //                                      category + "_delayedOriMeas_" + "updatedPoseWithMeas");
 }
 
 void MCVanytEstimator::removeDelayedOriMeasLogs(mc_rtc::Logger & logger)
@@ -520,22 +520,13 @@ void MCVanytEstimator::addToLogger(const mc_control::MCController & ctl,
 {
   category_ = category;
 
+  logger.addLogEntry(category + "_FloatingBase_world_pose", [this]() -> const sva::PTransformd & { return poseW_; });
+  logger.addLogEntry(category + "_FloatingBase_world_vel", [this]() -> const sva::MotionVecd & { return velW_; });
+
   odometryManager_.addToLogger(logger, category + "_leggedOdometryManager");
   logger.addLogEntry(category + "_estimatedState_p", [this]() -> so::Vector3 { return xk_.segment(6, 3); });
 
   logger.addLogEntry(category + "_estimatedState_x1", [this]() -> so::Vector3 { return xk_.segment(0, 3); });
-
-  logger.addLogEntry(category + "_debug_measuredOri_",
-                     [this]() -> Eigen::Quaterniond { return measuredOri_.toQuaternion().inverse(); });
-
-  logger.addLogEntry(category + "_debug_corrections_oriCorrection_",
-                     [this]() -> const so::Vector3 & { return estimator_.getOriCorrection(); });
-  logger.addLogEntry(category + "_debug_corrections_oriCorrFromOriMeas_",
-                     [this]() -> const so::Vector3 & { return estimator_.getOriCorrFromOriMeas(); });
-  logger.addLogEntry(category + "_debug_corrections_posCorrFromContactPos_",
-                     [this]() -> const so::Vector3 & { return estimator_.getPosCorrectionFromContactPos(); });
-  logger.addLogEntry(category + "_debug_corrections_oriCorrFromContactPos_",
-                     [this]() -> const so::Vector3 & { return estimator_.geOriCorrectionFromContactPos(); });
 
   logger.addLogEntry(category + "_estimatedState_x2prime",
                      [this]() -> so::Vector3 { return xk_.segment(3, 3).normalized(); });
@@ -546,237 +537,248 @@ void MCVanytEstimator::addToLogger(const mc_control::MCController & ctl,
                        ori.fromVector4(xk_.tail(4));
                        return ori.toQuaternion().inverse();
                      });
-  logger.addLogEntry(category + "_realRobotState_x1",
-                     [this, &ctl]() -> so::Vector3
-                     {
-                       const auto & realRobot = ctl.realRobot(robot_);
-                       const auto & rimu = realRobot.bodySensor(imuSensor_);
 
-                       const sva::PTransformd & rimuXbs = rimu.X_b_s();
+  // logger.addLogEntry(category + "_debug_measuredOri_",
+  //                    [this]() -> Eigen::Quaterniond { return measuredOri_.toQuaternion().inverse(); });
 
-                       so::kine::Kinematics parentImuKine = conversions::kinematics::fromSva(
-                           rimuXbs, so::kine::Kinematics::Flags::pose | so::kine::Kinematics::Flags::vel);
+  // logger.addLogEntry(category + "_debug_corrections_oriCorrection_",
+  //                    [this]() -> const so::Vector3 & { return estimator_.getOriCorrection(); });
+  // logger.addLogEntry(category + "_debug_corrections_oriCorrFromOriMeas_",
+  //                    [this]() -> const so::Vector3 & { return estimator_.getOriCorrFromOriMeas(); });
+  // logger.addLogEntry(category + "_debug_corrections_posCorrFromContactPos_",
+  //                    [this]() -> const so::Vector3 & { return estimator_.getPosCorrectionFromContactPos(); });
+  // logger.addLogEntry(category + "_debug_corrections_oriCorrFromContactPos_",
+  //                    [this]() -> const so::Vector3 & { return estimator_.geOriCorrectionFromContactPos(); });
 
-                       const sva::PTransformd & realRobotParentPoseW = realRobot.bodyPosW(rimu.parentBody());
+  // logger.addLogEntry(category + "_realRobotState_x1",
+  //                    [this, &ctl]() -> so::Vector3
+  //                    {
+  //                      const auto & realRobot = ctl.realRobot(robot_);
+  //                      const auto & rimu = realRobot.bodySensor(imuSensor_);
 
-                       // Compute velocity of the imu in the control frame
-                       auto & realRobotV_0_imuParent =
-                           realRobot.mbc().bodyVelW[realRobot.bodyIndexByName(rimu.parentBody())];
+  //                      const sva::PTransformd & rimuXbs = rimu.X_b_s();
 
-                       so::kine::Kinematics worldParentKine =
-                           conversions::kinematics::fromSva(realRobotParentPoseW, realRobotV_0_imuParent, true);
+  //                      so::kine::Kinematics parentImuKine = conversions::kinematics::fromSva(
+  //                          rimuXbs, so::kine::Kinematics::Flags::pose | so::kine::Kinematics::Flags::vel);
 
-                       so::kine::Kinematics worldImuKine = worldParentKine * parentImuKine;
-                       return worldImuKine.orientation.toMatrix3().transpose() * worldImuKine.linVel();
-                     });
+  //                      const sva::PTransformd & realRobotParentPoseW = realRobot.bodyPosW(rimu.parentBody());
 
-  logger.addLogEntry(category + "_realRobotState_x2",
-                     [this, &ctl]() -> so::Vector3
-                     {
-                       const auto & realRobot = ctl.realRobot(robot_);
-                       const auto & rimu = realRobot.bodySensor(imuSensor_);
+  //                      // Compute velocity of the imu in the control frame
+  //                      auto & realRobotV_0_imuParent =
+  //                          realRobot.mbc().bodyVelW[realRobot.bodyIndexByName(rimu.parentBody())];
 
-                       const sva::PTransformd & rimuXbs = rimu.X_b_s();
+  //                      so::kine::Kinematics worldParentKine =
+  //                          conversions::kinematics::fromSva(realRobotParentPoseW, realRobotV_0_imuParent, true);
 
-                       so::kine::Kinematics parentImuKine = conversions::kinematics::fromSva(
-                           rimuXbs, so::kine::Kinematics::Flags::pose | so::kine::Kinematics::Flags::vel);
+  //                      so::kine::Kinematics worldImuKine = worldParentKine * parentImuKine;
+  //                      return worldImuKine.orientation.toMatrix3().transpose() * worldImuKine.linVel();
+  //                    });
 
-                       const sva::PTransformd & realRobotParentPoseW = realRobot.bodyPosW(rimu.parentBody());
+  // logger.addLogEntry(category + "_realRobotState_x2",
+  //                    [this, &ctl]() -> so::Vector3
+  //                    {
+  //                      const auto & realRobot = ctl.realRobot(robot_);
+  //                      const auto & rimu = realRobot.bodySensor(imuSensor_);
 
-                       // Compute velocity of the imu in the control frame
-                       auto & realRobotV_0_imuParent =
-                           realRobot.mbc().bodyVelW[realRobot.bodyIndexByName(rimu.parentBody())];
+  //                      const sva::PTransformd & rimuXbs = rimu.X_b_s();
 
-                       so::kine::Kinematics worldParentKine =
-                           conversions::kinematics::fromSva(realRobotParentPoseW, realRobotV_0_imuParent, true);
+  //                      so::kine::Kinematics parentImuKine = conversions::kinematics::fromSva(
+  //                          rimuXbs, so::kine::Kinematics::Flags::pose | so::kine::Kinematics::Flags::vel);
 
-                       so::kine::Kinematics worldImuKine = worldParentKine * parentImuKine;
-                       return (worldImuKine.orientation.toMatrix3().transpose() * so::Vector3::UnitZ()).normalized();
-                     });
+  //                      const sva::PTransformd & realRobotParentPoseW = realRobot.bodyPosW(rimu.parentBody());
 
-  logger.addLogEntry(category + "_constants_gains_alpha", [this]() -> double { return estimator_.getAlpha(); });
-  logger.addLogEntry(category + "_constants_gains_beta", [this]() -> double { return estimator_.getBeta(); });
-  logger.addLogEntry(category + "_constants_gains_rho", [this]() -> double { return estimator_.getRho(); });
-  logger.addLogEntry(category + "_constants_gains_contacts_mu", [this]() -> double { return mu_contacts_; });
-  logger.addLogEntry(category + "_constants_gains_contacts_lambda", [this]() -> double { return lambda_contacts_; });
-  logger.addLogEntry(category + "_constants_gains_contacts_gamma", [this]() -> double { return gamma_contacts_; });
+  //                      // Compute velocity of the imu in the control frame
+  //                      auto & realRobotV_0_imuParent =
+  //                          realRobot.mbc().bodyVelW[realRobot.bodyIndexByName(rimu.parentBody())];
 
-  logger.addLogEntry(category + "_debug_OdometryType", [this]() -> std::string
-                     { return measurements::odometryTypeToSstring(odometryManager_.odometryType_); });
+  //                      so::kine::Kinematics worldParentKine =
+  //                          conversions::kinematics::fromSva(realRobotParentPoseW, realRobotV_0_imuParent, true);
 
-  logger.addLogEntry(category + "_IMU_world_orientation",
-                     [this]() { return Eigen::Quaterniond{estimatedRotationIMU_}; });
+  //                      so::kine::Kinematics worldImuKine = worldParentKine * parentImuKine;
+  //                      return (worldImuKine.orientation.toMatrix3().transpose() * so::Vector3::UnitZ()).normalized();
+  //                    });
 
-  logger.addLogEntry(category + "_IMU_AnchorFrame_pose", [this]() -> const sva::PTransformd & { return X_C_IMU_; });
-  logger.addLogEntry(category + "_IMU_AnchorFrame_linVel", [this]() -> const sva::MotionVecd & { return imuVelC_; });
-  logger.addLogEntry(category + "_FloatingBase_world_pose", [this]() -> const sva::PTransformd & { return poseW_; });
-  logger.addLogEntry(category + "_FloatingBase_world_vel", [this]() -> const sva::MotionVecd & { return velW_; });
-  logger.addLogEntry(category + "_debug_x1", [this]() -> const so::Vector3 & { return yv_; });
+  // logger.addLogEntry(category + "_constants_gains_alpha", [this]() -> double { return estimator_.getAlpha(); });
+  // logger.addLogEntry(category + "_constants_gains_beta", [this]() -> double { return estimator_.getBeta(); });
+  // logger.addLogEntry(category + "_constants_gains_rho", [this]() -> double { return estimator_.getRho(); });
+  // logger.addLogEntry(category + "_constants_gains_contacts_mu", [this]() -> double { return mu_contacts_; });
+  // logger.addLogEntry(category + "_constants_gains_contacts_lambda", [this]() -> double { return lambda_contacts_; });
+  // logger.addLogEntry(category + "_constants_gains_contacts_gamma", [this]() -> double { return gamma_contacts_; });
 
-  logger.addLogEntry(category + "_debug_realWorldImuLocAngVel",
-                     [this, &ctl]() -> so::Vector3
-                     {
-                       const sva::PTransformd & realImuXbs = ctl.realRobot(robot_).bodySensor(imuSensor_).X_b_s();
+  // logger.addLogEntry(category + "_debug_OdometryType", [this]() -> std::string
+  //                    { return measurements::odometryTypeToSstring(odometryManager_.odometryType_); });
 
-                       so::kine::Kinematics realParentImuKine = conversions::kinematics::fromSva(
-                           realImuXbs, so::kine::Kinematics::Flags::pose | so::kine::Kinematics::Flags::vel);
+  // logger.addLogEntry(category + "_IMU_world_orientation",
+  //                    [this]() { return Eigen::Quaterniond{estimatedRotationIMU_}; });
 
-                       const sva::PTransformd & realParentPoseW =
-                           ctl.realRobot(robot_).bodyPosW(ctl.realRobot(robot_).bodySensor(imuSensor_).parentBody());
+  // logger.addLogEntry(category + "_IMU_AnchorFrame_pose", [this]() -> const sva::PTransformd & { return X_C_IMU_; });
+  // logger.addLogEntry(category + "_IMU_AnchorFrame_linVel", [this]() -> const sva::MotionVecd & { return imuVelC_; });
+  // logger.addLogEntry(category + "_debug_x1", [this]() -> const so::Vector3 & { return yv_; });
 
-                       // Compute velocity of the imu in the control frame
-                       auto & real_v_0_imuParent =
-                           ctl.realRobot(robot_).mbc().bodyVelW[ctl.realRobot(robot_).bodyIndexByName(
-                               ctl.realRobot(robot_).bodySensor(imuSensor_).parentBody())];
+  // logger.addLogEntry(category + "_debug_realWorldImuLocAngVel",
+  //                    [this, &ctl]() -> so::Vector3
+  //                    {
+  //                      const sva::PTransformd & realImuXbs = ctl.realRobot(robot_).bodySensor(imuSensor_).X_b_s();
 
-                       so::kine::Kinematics realWorldParentKine =
-                           conversions::kinematics::fromSva(realParentPoseW, real_v_0_imuParent, true);
+  //                      so::kine::Kinematics realParentImuKine = conversions::kinematics::fromSva(
+  //                          realImuXbs, so::kine::Kinematics::Flags::pose | so::kine::Kinematics::Flags::vel);
 
-                       so::kine::Kinematics realWorldImuKine_ = realWorldParentKine * realParentImuKine;
+  //                      const sva::PTransformd & realParentPoseW =
+  //                          ctl.realRobot(robot_).bodyPosW(ctl.realRobot(robot_).bodySensor(imuSensor_).parentBody());
 
-                       return realWorldImuKine_.orientation.toMatrix3().transpose() * realWorldImuKine_.angVel();
-                     });
+  //                      // Compute velocity of the imu in the control frame
+  //                      auto & real_v_0_imuParent =
+  //                          ctl.realRobot(robot_).mbc().bodyVelW[ctl.realRobot(robot_).bodyIndexByName(
+  //                              ctl.realRobot(robot_).bodySensor(imuSensor_).parentBody())];
 
-  logger.addLogEntry(category + "_debug_ctlWorldImuLocAngVel",
-                     [this, &ctl]() -> so::Vector3
-                     {
-                       const sva::PTransformd & imuXbs = ctl.robot(robot_).bodySensor(imuSensor_).X_b_s();
+  //                      so::kine::Kinematics realWorldParentKine =
+  //                          conversions::kinematics::fromSva(realParentPoseW, real_v_0_imuParent, true);
 
-                       so::kine::Kinematics parentImuKine = conversions::kinematics::fromSva(
-                           imuXbs, so::kine::Kinematics::Flags::pose | so::kine::Kinematics::Flags::vel);
+  //                      so::kine::Kinematics realWorldImuKine_ = realWorldParentKine * realParentImuKine;
 
-                       const sva::PTransformd & parentPoseW =
-                           ctl.robot(robot_).bodyPosW(ctl.robot(robot_).bodySensor(imuSensor_).parentBody());
+  //                      return realWorldImuKine_.orientation.toMatrix3().transpose() * realWorldImuKine_.angVel();
+  //                    });
 
-                       // Compute velocity of the imu in the control frame
-                       auto & v_0_imuParent = ctl.robot(robot_).mbc().bodyVelW[ctl.robot(robot_).bodyIndexByName(
-                           ctl.robot(robot_).bodySensor(imuSensor_).parentBody())];
+  // logger.addLogEntry(category + "_debug_ctlWorldImuLocAngVel",
+  //                    [this, &ctl]() -> so::Vector3
+  //                    {
+  //                      const sva::PTransformd & imuXbs = ctl.robot(robot_).bodySensor(imuSensor_).X_b_s();
 
-                       so::kine::Kinematics worldParentKine =
-                           conversions::kinematics::fromSva(parentPoseW, v_0_imuParent, true);
+  //                      so::kine::Kinematics parentImuKine = conversions::kinematics::fromSva(
+  //                          imuXbs, so::kine::Kinematics::Flags::pose | so::kine::Kinematics::Flags::vel);
 
-                       so::kine::Kinematics worldImuKine_ = worldParentKine * parentImuKine;
+  //                      const sva::PTransformd & parentPoseW =
+  //                          ctl.robot(robot_).bodyPosW(ctl.robot(robot_).bodySensor(imuSensor_).parentBody());
 
-                       return worldImuKine_.orientation.toMatrix3().transpose() * worldImuKine_.angVel();
-                     });
+  //                      // Compute velocity of the imu in the control frame
+  //                      auto & v_0_imuParent = ctl.robot(robot_).mbc().bodyVelW[ctl.robot(robot_).bodyIndexByName(
+  //                          ctl.robot(robot_).bodySensor(imuSensor_).parentBody())];
 
-  logger.addLogEntry(category + "_debug_realX1",
-                     [this, &ctl]() -> so::Vector3
-                     {
-                       const auto & realRobot = ctl.realRobot(robot_);
-                       const auto & rimu = realRobot.bodySensor(imuSensor_);
+  //                      so::kine::Kinematics worldParentKine =
+  //                          conversions::kinematics::fromSva(parentPoseW, v_0_imuParent, true);
 
-                       const sva::PTransformd & rimuXbs = rimu.X_b_s();
+  //                      so::kine::Kinematics worldImuKine_ = worldParentKine * parentImuKine;
 
-                       so::kine::Kinematics parentImuKine = conversions::kinematics::fromSva(
-                           rimuXbs, so::kine::Kinematics::Flags::pose | so::kine::Kinematics::Flags::vel);
+  //                      return worldImuKine_.orientation.toMatrix3().transpose() * worldImuKine_.angVel();
+  //                    });
 
-                       const sva::PTransformd & parentPoseW = realRobot.bodyPosW(rimu.parentBody());
+  // logger.addLogEntry(category + "_debug_realX1",
+  //                    [this, &ctl]() -> so::Vector3
+  //                    {
+  //                      const auto & realRobot = ctl.realRobot(robot_);
+  //                      const auto & rimu = realRobot.bodySensor(imuSensor_);
 
-                       // Compute velocity of the imu in the control frame
-                       auto & v_0_imuParent = realRobot.mbc().bodyVelW[realRobot.bodyIndexByName(rimu.parentBody())];
+  //                      const sva::PTransformd & rimuXbs = rimu.X_b_s();
 
-                       so::kine::Kinematics worldParentKine =
-                           conversions::kinematics::fromSva(parentPoseW, v_0_imuParent, true);
+  //                      so::kine::Kinematics parentImuKine = conversions::kinematics::fromSva(
+  //                          rimuXbs, so::kine::Kinematics::Flags::pose | so::kine::Kinematics::Flags::vel);
 
-                       so::kine::Kinematics worldImuKine = worldParentKine * parentImuKine;
-                       return worldImuKine.orientation.toMatrix3().transpose() * worldImuKine.linVel();
-                     });
+  //                      const sva::PTransformd & parentPoseW = realRobot.bodyPosW(rimu.parentBody());
 
-  logger.addLogEntry(category + "_debug_realImuVel",
-                     [this, &ctl]() -> so::Vector3
-                     {
-                       const auto & realRobot = ctl.realRobot(robot_);
-                       const auto & rimu = realRobot.bodySensor(imuSensor_);
+  //                      // Compute velocity of the imu in the control frame
+  //                      auto & v_0_imuParent = realRobot.mbc().bodyVelW[realRobot.bodyIndexByName(rimu.parentBody())];
 
-                       const sva::PTransformd & rimuXbs = rimu.X_b_s();
+  //                      so::kine::Kinematics worldParentKine =
+  //                          conversions::kinematics::fromSva(parentPoseW, v_0_imuParent, true);
 
-                       so::kine::Kinematics parentImuKine = conversions::kinematics::fromSva(
-                           rimuXbs, so::kine::Kinematics::Flags::pose | so::kine::Kinematics::Flags::vel);
+  //                      so::kine::Kinematics worldImuKine = worldParentKine * parentImuKine;
+  //                      return worldImuKine.orientation.toMatrix3().transpose() * worldImuKine.linVel();
+  //                    });
 
-                       const sva::PTransformd & parentPoseW = realRobot.bodyPosW(rimu.parentBody());
+  // logger.addLogEntry(category + "_debug_realImuVel",
+  //                    [this, &ctl]() -> so::Vector3
+  //                    {
+  //                      const auto & realRobot = ctl.realRobot(robot_);
+  //                      const auto & rimu = realRobot.bodySensor(imuSensor_);
 
-                       auto & v_0_imuParent = realRobot.mbc().bodyVelW[realRobot.bodyIndexByName(rimu.parentBody())];
+  //                      const sva::PTransformd & rimuXbs = rimu.X_b_s();
 
-                       so::kine::Kinematics worldParentKine =
-                           conversions::kinematics::fromSva(parentPoseW, v_0_imuParent, true);
+  //                      so::kine::Kinematics parentImuKine = conversions::kinematics::fromSva(
+  //                          rimuXbs, so::kine::Kinematics::Flags::pose | so::kine::Kinematics::Flags::vel);
 
-                       so::kine::Kinematics worldImuKine = worldParentKine * parentImuKine;
-                       return worldImuKine.linVel();
-                     });
+  //                      const sva::PTransformd & parentPoseW = realRobot.bodyPosW(rimu.parentBody());
 
-  logger.addLogEntry(category + "_debug_realBodyVel",
-                     [this, &ctl]() -> so::Vector3
-                     {
-                       const auto & realRobot = ctl.realRobot(robot_);
-                       const auto & rimu = realRobot.bodySensor(imuSensor_);
+  //                      auto & v_0_imuParent = realRobot.mbc().bodyVelW[realRobot.bodyIndexByName(rimu.parentBody())];
 
-                       return realRobot.mbc().bodyVelW[realRobot.bodyIndexByName(rimu.parentBody())].linear();
-                     });
+  //                      so::kine::Kinematics worldParentKine =
+  //                          conversions::kinematics::fromSva(parentPoseW, v_0_imuParent, true);
 
-  logger.addLogEntry(category + "_debug_ctlX1",
-                     [this, &ctl]() -> so::Vector3
-                     {
-                       const auto & robot = ctl.robot(robot_);
-                       const auto & imu = robot.bodySensor(imuSensor_);
+  //                      so::kine::Kinematics worldImuKine = worldParentKine * parentImuKine;
+  //                      return worldImuKine.linVel();
+  //                    });
 
-                       const sva::PTransformd & imuXbs = imu.X_b_s();
+  // logger.addLogEntry(category + "_debug_realBodyVel",
+  //                    [this, &ctl]() -> so::Vector3
+  //                    {
+  //                      const auto & realRobot = ctl.realRobot(robot_);
+  //                      const auto & rimu = realRobot.bodySensor(imuSensor_);
 
-                       so::kine::Kinematics parentImuKine = conversions::kinematics::fromSva(
-                           imuXbs, so::kine::Kinematics::Flags::pose | so::kine::Kinematics::Flags::vel);
+  //                      return realRobot.mbc().bodyVelW[realRobot.bodyIndexByName(rimu.parentBody())].linear();
+  //                    });
 
-                       const sva::PTransformd & parentPoseW = robot.bodyPosW(imu.parentBody());
+  // logger.addLogEntry(category + "_debug_ctlX1",
+  //                    [this, &ctl]() -> so::Vector3
+  //                    {
+  //                      const auto & robot = ctl.robot(robot_);
+  //                      const auto & imu = robot.bodySensor(imuSensor_);
 
-                       // Compute velocity of the imu in the control frame
-                       auto & v_0_imuParent = robot.mbc().bodyVelW[robot.bodyIndexByName(imu.parentBody())];
+  //                      const sva::PTransformd & imuXbs = imu.X_b_s();
 
-                       so::kine::Kinematics worldParentKine =
-                           conversions::kinematics::fromSva(parentPoseW, v_0_imuParent, true);
+  //                      so::kine::Kinematics parentImuKine = conversions::kinematics::fromSva(
+  //                          imuXbs, so::kine::Kinematics::Flags::pose | so::kine::Kinematics::Flags::vel);
 
-                       so::kine::Kinematics worldImuKine = worldParentKine * parentImuKine;
-                       return worldImuKine.orientation.toMatrix3().transpose() * worldImuKine.linVel();
-                     });
+  //                      const sva::PTransformd & parentPoseW = robot.bodyPosW(imu.parentBody());
 
-  logger.addLogEntry(category + "_debug_ctlImuVel",
-                     [this, &ctl]() -> so::Vector3
-                     {
-                       const auto & robot = ctl.robot(robot_);
-                       const auto & imu = robot.bodySensor(imuSensor_);
+  //                      // Compute velocity of the imu in the control frame
+  //                      auto & v_0_imuParent = robot.mbc().bodyVelW[robot.bodyIndexByName(imu.parentBody())];
 
-                       const sva::PTransformd & imuXbs = imu.X_b_s();
+  //                      so::kine::Kinematics worldParentKine =
+  //                          conversions::kinematics::fromSva(parentPoseW, v_0_imuParent, true);
 
-                       so::kine::Kinematics parentImuKine = conversions::kinematics::fromSva(
-                           imuXbs, so::kine::Kinematics::Flags::pose | so::kine::Kinematics::Flags::vel);
+  //                      so::kine::Kinematics worldImuKine = worldParentKine * parentImuKine;
+  //                      return worldImuKine.orientation.toMatrix3().transpose() * worldImuKine.linVel();
+  //                    });
 
-                       const sva::PTransformd & parentPoseW = robot.bodyPosW(imu.parentBody());
+  // logger.addLogEntry(category + "_debug_ctlImuVel",
+  //                    [this, &ctl]() -> so::Vector3
+  //                    {
+  //                      const auto & robot = ctl.robot(robot_);
+  //                      const auto & imu = robot.bodySensor(imuSensor_);
 
-                       auto & v_0_imuParent = robot.mbc().bodyVelW[robot.bodyIndexByName(imu.parentBody())];
+  //                      const sva::PTransformd & imuXbs = imu.X_b_s();
 
-                       so::kine::Kinematics worldParentKine =
-                           conversions::kinematics::fromSva(parentPoseW, v_0_imuParent, true);
+  //                      so::kine::Kinematics parentImuKine = conversions::kinematics::fromSva(
+  //                          imuXbs, so::kine::Kinematics::Flags::pose | so::kine::Kinematics::Flags::vel);
 
-                       so::kine::Kinematics worldImuKine = worldParentKine * parentImuKine;
-                       return worldImuKine.linVel();
-                     });
+  //                      const sva::PTransformd & parentPoseW = robot.bodyPosW(imu.parentBody());
 
-  logger.addLogEntry(category + "_debug_contactDetected", [this]() -> std::string
-                     { return odometryManager_.contactsManager().contactsDetected() ? "contacts" : "no contacts"; });
+  //                      auto & v_0_imuParent = robot.mbc().bodyVelW[robot.bodyIndexByName(imu.parentBody())];
 
-  logger.addLogEntry(category + "_debug_ctlBodyVel",
-                     [this, &ctl]() -> so::Vector3
-                     {
-                       const auto & robot = ctl.robot(robot_);
-                       const auto & imu = robot.bodySensor(imuSensor_);
+  //                      so::kine::Kinematics worldParentKine =
+  //                          conversions::kinematics::fromSva(parentPoseW, v_0_imuParent, true);
 
-                       return robot.mbc().bodyVelW[robot.bodyIndexByName(imu.parentBody())].linear();
-                     });
+  //                      so::kine::Kinematics worldImuKine = worldParentKine * parentImuKine;
+  //                      return worldImuKine.linVel();
+  //                    });
 
-  conversions::kinematics::addToLogger(logger, worldImuKine_, category + "_debug_worldImuKine");
-  conversions::kinematics::addToLogger(logger, imuAnchorKine_, category + "_debug_imuAnchorKine_");
-  conversions::kinematics::addToLogger(logger, fbImuKine_, category + "_debug_fbImuKine_");
+  // logger.addLogEntry(category + "_debug_contactDetected", [this]() -> std::string
+  //                    { return odometryManager_.contactsManager().contactsDetected() ? "contacts" : "no contacts"; });
 
-  conversions::kinematics::addToLogger(logger, worldFbKine_, category + "_debug_worldFbKine_");
-  conversions::kinematics::addToLogger(logger, correctedWorldImuKine_, category + "_debug_correctedWorldImuKine_");
+  // logger.addLogEntry(category + "_debug_ctlBodyVel",
+  //                    [this, &ctl]() -> so::Vector3
+  //                    {
+  //                      const auto & robot = ctl.robot(robot_);
+  //                      const auto & imu = robot.bodySensor(imuSensor_);
+
+  //                      return robot.mbc().bodyVelW[robot.bodyIndexByName(imu.parentBody())].linear();
+  //                    });
+
+  // conversions::kinematics::addToLogger(logger, worldImuKine_, category + "_debug_worldImuKine");
+  // conversions::kinematics::addToLogger(logger, imuAnchorKine_, category + "_debug_imuAnchorKine_");
+  // conversions::kinematics::addToLogger(logger, fbImuKine_, category + "_debug_fbImuKine_");
+
+  // conversions::kinematics::addToLogger(logger, worldFbKine_, category + "_debug_worldFbKine_");
+  // conversions::kinematics::addToLogger(logger, correctedWorldImuKine_, category + "_debug_correctedWorldImuKine_");
 }
 
 void MCVanytEstimator::removeFromLogger(mc_rtc::Logger & logger, const std::string & category)

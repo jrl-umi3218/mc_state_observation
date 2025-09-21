@@ -71,7 +71,7 @@ protected:
   // ratio between the vertical force and the force norm.
   double forceRatio_;
   // weighing coefficient for the anchor point computation
-  double lambda_;
+  double lambda_ = 0.0;
   // time ellapsed since the creation of the contact.
   double lifeTime_;
   // defines the weighting of the contribution of the newly "measured" reference pose of the contact and the current one

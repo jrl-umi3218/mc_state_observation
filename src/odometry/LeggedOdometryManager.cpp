@@ -644,6 +644,8 @@ void LeggedOdometryManager::addContactLogEntries(const mc_control::MCController 
 
   logger.addLogEntry(category_ + "_contacts_" + contactName + "_lambda", &contact,
                      [&contact]() -> double { return contact.lambda(); });
+  logger.addLogEntry(category_ + "_contacts_" + contactName + "_forceRatio", &contact,
+                     [&contact]() -> double { return contact.forceRatio(); });
   logger.addLogEntry(category_ + "_contacts_" + contactName + "_forceNorm", &contact,
                      [&contact]() -> double { return contact.forceMeas().norm(); });
   logger.addLogEntry(category_ + "_contacts_" + contactName + "_lifeTime", &contact,
@@ -837,23 +839,24 @@ void LeggedOdometryManager::setOdometryType(OdometryType newOdometryType)
 void LeggedOdometryManager::addToLogger(mc_rtc::Logger & logger, const std::string & leggedOdomCategory)
 {
   category_ = leggedOdomCategory;
-  logger.addLogEntry(leggedOdomCategory + "_fbAnchorPos_", [this]() -> so::Vector3 & { return fbAnchorPos_; });
-  logger.addLogEntry(leggedOdomCategory + "_worldAnchorPos", [this]() { return worldAnchorPos_; });
-  logger.addLogEntry(leggedOdomCategory + "_odometryRobot_posW",
-                     [this]() -> const sva::PTransformd & { return odometryRobot().posW(); });
-  logger.addLogEntry(leggedOdomCategory + "_odometryRobot_velW",
-                     [this]() -> const sva::MotionVecd & { return odometryRobot().velW(); });
-  logger.addLogEntry(leggedOdomCategory + "_odometryRobot_accW", [this]() { return odometryRobot().accW(); });
+  // logger.addLogEntry(leggedOdomCategory + "_fbAnchorPos_", [this]() -> so::Vector3 & { return fbAnchorPos_; });
+  // logger.addLogEntry(leggedOdomCategory + "_worldAnchorPos", [this]() { return worldAnchorPos_; });
+  // logger.addLogEntry(leggedOdomCategory + "_odometryRobot_posW",
+  //                    [this]() -> const sva::PTransformd & { return odometryRobot().posW(); });
+  // logger.addLogEntry(leggedOdomCategory + "_odometryRobot_velW",
+  //                    [this]() -> const sva::MotionVecd & { return odometryRobot().velW(); });
+  // logger.addLogEntry(leggedOdomCategory + "_odometryRobot_accW", [this]() { return odometryRobot().accW(); });
 
-  logger.addLogEntry(leggedOdomCategory + "_kappa", [this]() { return kappa_; });
-  logger.addLogEntry(leggedOdomCategory + "_lambdaInf", [this]() { return lambdaInf_; });
+  // logger.addLogEntry(leggedOdomCategory + "_kappa", [this]() { return kappa_; });
+  // logger.addLogEntry(leggedOdomCategory + "_lambdaInf", [this]() { return lambdaInf_; });
 
-  logger.addLogEntry(leggedOdomCategory + "_forceRatioBasedWeighting", [this]() { return forceRatioBasedWeighting_; });
+  // logger.addLogEntry(leggedOdomCategory + "_forceRatioBasedWeighting", [this]() { return forceRatioBasedWeighting_;
+  // });
 
-  logger.addLogEntry(leggedOdomCategory + "_OdometryType",
-                     [this]() -> std::string { return measurements::odometryTypeToSstring(odometryType_); });
+  // logger.addLogEntry(leggedOdomCategory + "_OdometryType",
+  //                    [this]() -> std::string { return measurements::odometryTypeToSstring(odometryType_); });
 
-  contactsManager_.addToLogger(logger, leggedOdomCategory + "_contactsManager");
+  // contactsManager_.addToLogger(logger, leggedOdomCategory + "_contactsManager");
 }
 
 } // namespace mc_state_observation::odometry
