@@ -1015,7 +1015,10 @@ void MCKineticsObserver::setNewContact(const mc_control::MCController & ctl,
   if(withDebugLogs_)
   {
     addContactLogEntries(ctl, logger, contact);
-    if(contact.sensorEnabled_) { addContactMeasurementsLogEntries(logger, contact); }
+    if(contact.sensorEnabled_)
+    {
+      // addContactMeasurementsLogEntries(logger, contact);
+    }
   }
 }
 

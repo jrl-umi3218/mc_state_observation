@@ -9,6 +9,7 @@
 #include <state-observation/observer/waiko-humanoid.hpp>
 #include <state-observation/tools/measurements-manager/Contact.hpp>
 #include <state-observation/tools/odometry/legged-odometry-manager.hpp>
+#include <state-observation/tools/rigid-body-kinematics.hpp>
 
 namespace mc_state_observation
 {
@@ -46,7 +47,7 @@ public:
    *
    * @param odomRobot Robot with the kinematics of the control robot but with updated joint values.
    */
-  void runEstimator(const mc_control::MCController & ctl, const mc_rbdyn::Robot & odomRobot);
+  void runEstimator(const mc_control::MCController & ctl);
 
   /// @brief Updates the real robot and/or the IMU signal using our estimation results
   /// @param ctl Controller
@@ -137,15 +138,6 @@ protected:
   std::string imuSensor_; // IMU used for the estimation
   bool updateSensor_ = true; // indicates whether we update the IMU signal or not
 
-  /*!
-   * parameter related to the convergence of the linear velocity
-   * of the IMU expressed in the control frame
-   */
-  double finalAlpha_ = 5;
-  ///  parameter related to the fast convergence of the tilt
-  double finalBeta_ = 1;
-  /// parameter related to the orthogonality
-  double finalRho_ = 2;
   // /// gain of the gyro bias correction by the velocity
   // double finalGamma_ = 1;
 
@@ -157,7 +149,24 @@ protected:
   /// initial value of the parameter related to the fast convergence of the tilt
   double beta_ = 1;
   /// initial value of the parameter related to the orthogonality
+  double gamma_ = 2; // gain associated with the correction of the orientation by the contact orientation
+  double mu_ = 2;
+  // gain associated with the correction of the position by the contact position
   double rho_ = 2;
+
+  /*!
+   * parameter related to the convergence of the linear velocity
+   * of the IMU expressed in the control frame
+   */
+  double finalAlpha_ = 5;
+  ///  parameter related to the fast convergence of the tilt
+  double finalBeta_ = 1;
+  /// parameter related to the orthogonality
+  double finalGamma_ = 2;
+  // gain associated with the correction of the orientation by the contact orientation
+  double finalMu_ = 2;
+  // gain associated with the correction of the position by the contact position
+  double finalRho_ = 2;
   // /// gain of the gyro bias correction by the velocity
   // double gamma_ = 2;
 
@@ -218,16 +227,9 @@ protected:
   stateObservation::kine::Orientation measuredOri_ = stateObservation::kine::Orientation::zeroRotation();
   stateObservation::Vector measurements_;
 
-  // gain associated with the correction of the orientation by the contact orientation
-  double mu_contacts_ = 2;
-  // gain associated with the correction of the position by the contact position
-  double lambda_contacts_ = 2;
-
-  // gain associated with the correction of the orientation by the contact orientation
-  double mu_contacts_final_ = 2;
-  // gain associated with the correction of the position by the contact position
-  double lambda_contacts_final_ = 2;
-
+  stateObservation::kine::Kinematics worldImuKineFromAnchor_;
+  stateObservation::kine::LocalKinematics worldImuLocKineFromAnchor_;
+  stateObservation::kine::Kinematics worldAnchorKine_;
   // zero frame transformation
   sva::PTransformd zeroPose_;
   // zero velocity or acceleration

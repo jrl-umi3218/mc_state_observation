@@ -41,14 +41,16 @@ void MCVanytEstimator::configure(const mc_control::MCController & ctl, const mc_
 
   filterGainsConfig("initAlpha", alpha_);
   filterGainsConfig("initBeta", beta_);
-  filterGainsConfig("initRho", rho_);
+  filterGainsConfig("initGamma", gamma_);
+  filterGainsConfig("initRho", rho_contacts_);
+  filterGainsConfig("initMu", mu_contacts_);
+
   filterGainsConfig("finalAlpha", finalAlpha_);
   filterGainsConfig("finalBeta", finalBeta_);
-  filterGainsConfig("finalRho", finalRho_);
-  filterGainsConfig("gammaContacts", gamma_contacts_);
-  filterGainsConfig("lambdaContacts", lambda_contacts_);
-  filterGainsConfig("muContacts", mu_contacts_);
-  filterGainsConfig("muGyro", mu_gyroscope_);
+  filterGainsConfig("finalGamma", finalGamma_);
+  filterGainsConfig("finalRho", final_rho_contacts_);
+  filterGainsConfig("finalMu", final_mu_contacts_);
+  filterGainsConfig("finalMu", final_mu_gyroscope_);
 
   anchorFrameFunction_ = "KinematicAnchorFrame::" + ctl.robot(robot_).name();
   // if a user-defined anchor frame function is given, we use it instead
@@ -191,6 +193,10 @@ void MCVanytEstimator::reset(const mc_control::MCController & ctl)
   X_C_IMU_ = sva::PTransformd::Identity();
 
   odometryManager_.reset();
+
+  estimator_.setAlpha(alpha_);
+  estimator_.setBeta(beta_);
+  estimator_.setGamma(gamma_);
 }
 
 bool MCVanytEstimator::run(const mc_control::MCController & ctl)
@@ -202,7 +208,10 @@ bool MCVanytEstimator::run(const mc_control::MCController & ctl)
   {
     alpha_ = finalAlpha_;
     beta_ = finalBeta_;
-    rho_ = finalRho_;
+    gamma_ = finalGamma_;
+    mu_contacts_ = final_mu_contacts_;
+    mu_gyroscope_ = final_mu_gyroscope_;
+    rho_contacts_ = final_rho_contacts_;
   }
 
   odometryManager_.initLoop(ctl, logger, odometry::LeggedOdometryManager::RunParameters());
@@ -290,7 +299,7 @@ void MCVanytEstimator::runTiltEstimator(const mc_control::MCController & ctl, co
   {
     estimator_.setAlpha(alpha_);
     estimator_.setBeta(beta_);
-    estimator_.setRho(rho_);
+    estimator_.setGamma(gamma_);
 
     yv_ = -imu.angularVelocity().cross(imuAnchorKine_.position()) - imuAnchorKine_.linVel();
   }
@@ -319,7 +328,7 @@ void MCVanytEstimator::runTiltEstimator(const mc_control::MCController & ctl, co
 
     estimator_.addOrientationMeasurement(measuredOri_, mu_contacts_ * mContact->lambda());
     estimator_.addContactPosMeasurement(worldContactRefKine.position(), imuContactPos,
-                                        lambda_contacts_ * mContact->lambda(), gamma_contacts_ * mContact->lambda());
+                                        rho_contacts_ * mContact->lambda(), mu_contacts_ * mContact->lambda());
   }
 
   // estimation of the state with the complementary filters
@@ -525,6 +534,8 @@ void MCVanytEstimator::addToLogger(const mc_control::MCController & ctl,
 
   odometryManager_.addToLogger(logger, category + "_leggedOdometryManager");
   logger.addLogEntry(category + "_estimatedState_p", [this]() -> so::Vector3 { return xk_.segment(6, 3); });
+  logger.addLogEntry(category + "_estimatedState_pl",
+                     [this]() -> so::Vector3 { return poseW_.rotation() * xk_.segment(6, 3); });
 
   logger.addLogEntry(category + "_estimatedState_x1", [this]() -> so::Vector3 { return xk_.segment(0, 3); });
 
@@ -613,7 +624,7 @@ void MCVanytEstimator::addToLogger(const mc_control::MCController & ctl,
 
   // logger.addLogEntry(category + "_IMU_AnchorFrame_pose", [this]() -> const sva::PTransformd & { return X_C_IMU_; });
   // logger.addLogEntry(category + "_IMU_AnchorFrame_linVel", [this]() -> const sva::MotionVecd & { return imuVelC_; });
-  // logger.addLogEntry(category + "_debug_x1", [this]() -> const so::Vector3 & { return yv_; });
+  logger.addLogEntry(category + "_debug_x1", [this]() -> const so::Vector3 & { return yv_; });
 
   // logger.addLogEntry(category + "_debug_realWorldImuLocAngVel",
   //                    [this, &ctl]() -> so::Vector3
@@ -773,12 +784,12 @@ void MCVanytEstimator::addToLogger(const mc_control::MCController & ctl,
   //                      return robot.mbc().bodyVelW[robot.bodyIndexByName(imu.parentBody())].linear();
   //                    });
 
-  // conversions::kinematics::addToLogger(logger, worldImuKine_, category + "_debug_worldImuKine");
-  // conversions::kinematics::addToLogger(logger, imuAnchorKine_, category + "_debug_imuAnchorKine_");
-  // conversions::kinematics::addToLogger(logger, fbImuKine_, category + "_debug_fbImuKine_");
+  conversions::kinematics::addToLogger(logger, worldImuKine_, category + "_debug_worldImuKine");
+  conversions::kinematics::addToLogger(logger, imuAnchorKine_, category + "_debug_imuAnchorKine_");
+  conversions::kinematics::addToLogger(logger, fbImuKine_, category + "_debug_fbImuKine_");
 
-  // conversions::kinematics::addToLogger(logger, worldFbKine_, category + "_debug_worldFbKine_");
-  // conversions::kinematics::addToLogger(logger, correctedWorldImuKine_, category + "_debug_correctedWorldImuKine_");
+  conversions::kinematics::addToLogger(logger, worldFbKine_, category + "_debug_worldFbKine_");
+  conversions::kinematics::addToLogger(logger, correctedWorldImuKine_, category + "_debug_correctedWorldImuKine_");
 }
 
 void MCVanytEstimator::removeFromLogger(mc_rtc::Logger & logger, const std::string & category)

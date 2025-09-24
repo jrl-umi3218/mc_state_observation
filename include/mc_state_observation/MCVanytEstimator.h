@@ -144,16 +144,6 @@ protected:
   bool updateSensor_ = true; // indicates whether we update the IMU signal or not
 
   /*!
-   * parameter related to the convergence of the linear velocity
-   * of the IMU expressed in the control frame
-   */
-  double finalAlpha_ = 5;
-  ///  parameter related to the fast convergence of the tilt
-  double finalBeta_ = 1;
-  /// parameter related to the orthogonality
-  double finalRho_ = 2;
-
-  /*!
    * initial value of the parameter related to the convergence of the linear velocity
    * of the IMU expressed in the control frame
    */
@@ -161,7 +151,17 @@ protected:
   /// initial value of the parameter related to the fast convergence of the tilt
   double beta_ = 1;
   /// initial value of the parameter related to the orthogonality
-  double rho_ = 2;
+  double gamma_ = 2;
+  double mu_contacts_ = 2;
+  double mu_gyroscope_ = 2;
+  double rho_contacts_ = 2;
+
+  double finalAlpha_ = 5;
+  double finalBeta_ = 1;
+  double finalGamma_ = 2;
+  double final_mu_contacts_ = 2;
+  double final_mu_gyroscope_ = 2;
+  double final_rho_contacts_ = 2;
 
   // flag indicating the variables we want in the resulting Kinematics object
   stateObservation::kine::Kinematics::Flags::Byte flagPoseVels_ =
@@ -227,11 +227,6 @@ protected:
 
   stateObservation::kine::Orientation measuredOri_ = stateObservation::kine::Orientation::zeroRotation();
   stateObservation::Vector measurements_;
-
-  double mu_contacts_ = 2;
-  double mu_gyroscope_ = 2;
-  double lambda_contacts_ = 2;
-  double gamma_contacts_ = 1;
 
   // delayed IMU orientation measurement
   DelayedOriMeasurement delayedOriMeas_;
