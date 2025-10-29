@@ -112,6 +112,7 @@ void LeggedOdometryManager::updateJointsConfiguration(const mc_control::MCContro
 
 void LeggedOdometryManager::run(const mc_control::MCController & ctl, KineParams & kineParams)
 {
+  iterTime_ = 0.0;
   if(k_data_ == k_est_) { mc_rtc::log::error_and_throw("Please call initLoop before this function"); }
 
   if(kineParams.tiltOrAttitudeMeas == nullptr)
@@ -144,6 +145,7 @@ void LeggedOdometryManager::updateFbAndContacts(const mc_control::MCController &
   bool oriUpdatable = false;
 
   // if the given orientation is only a tilt, we compute the yaw using the one of the contacts
+
   if(!params.oriIsAttitude)
   {
     const stateObservation::Matrix3 & tilt = *(params.tiltOrAttitudeMeas);
@@ -171,6 +173,8 @@ void LeggedOdometryManager::updateFbAndContacts(const mc_control::MCController &
         const auto & R2 = contact2.worldFbKineFromRef_.orientation.toMatrix3();
 
         // double u = contact2.forceRatio() / sumForceRatios_orientation;
+        auto start = std::chrono::high_resolution_clock::now();
+
         double u;
         if(forceRatioBasedWeighting_) { u = contact2.forceRatio() / sumForceRatios_orientation; }
         else { u = 0.5; }
@@ -191,13 +195,20 @@ void LeggedOdometryManager::updateFbAndContacts(const mc_control::MCController &
             * so::kine::rotationVectorToRotationMatrix(u / 2.0 * diffRotVector); // = R1 * exp( (1 - u) * log(R1^T R2) )
 
         fbKine_.orientation = stateObservation::kine::mergeRoll1Pitch1WithYaw2AxisAgnostic(tilt, meanOri);
+
+        auto end = std::chrono::high_resolution_clock::now();
+        iterTime_ += std::chrono::duration<double, std::micro>(end - start).count();
       }
     }
     else
     {
       // If no contact is detected, the yaw will not be updated but the tilt will.
+      auto start = std::chrono::high_resolution_clock::now();
       fbKine_.orientation =
           stateObservation::kine::mergeRoll1Pitch1WithYaw2AxisAgnostic(tilt, fbKine_.orientation.toMatrix3());
+
+      auto end = std::chrono::high_resolution_clock::now();
+      iterTime_ += std::chrono::duration<double, std::micro>(end - start).count();
     }
   }
   else
@@ -291,7 +302,13 @@ void LeggedOdometryManager::updatePositionOdometry()
    * point to the floating base.  We apply this translation to the reference position of the anchor frame in the world
    * to obtain the new position of the floating base in the word. */
 
-  if(posUpdatable_) { fbKine_.position = getWorldFbPosFromAnchor(); }
+  if(posUpdatable_)
+  {
+    auto start = std::chrono::high_resolution_clock::now();
+    fbKine_.position = getWorldFbPosFromAnchor();
+    auto end = std::chrono::high_resolution_clock::now();
+    iterTime_ += std::chrono::duration<double, std::micro>(end - start).count();
+  }
 }
 
 so::Vector3 LeggedOdometryManager::getWorldFbPosFromAnchor()
@@ -672,6 +689,8 @@ void LeggedOdometryManager::correctContactsRef()
     // we store the pose of the contact before it is corrected
     mContact->worldRefKineBeforeCorrection_ = mContact->worldRefKine_;
 
+    auto start = std::chrono::high_resolution_clock::now();
+
     mContact->newIncomingWorldRefKine_ = recomputeContactKinematics(*mContact);
 
     // double tau = ctl_dt_ / (kappa_ * mContact->lifeTime());
@@ -690,6 +709,9 @@ void LeggedOdometryManager::correctContactsRef()
         mContact->worldRefKine_.position()
         + mContact->correctionWeightingCoeff()
               * (mContact->newIncomingWorldRefKine_.position() - mContact->worldRefKine_.position());
+    auto end = std::chrono::high_resolution_clock::now();
+    iterTime_ += std::chrono::duration<double, std::micro>(end - start).count();
+
     if(odometryType_ == measurements::OdometryType::Flat) { mContact->worldRefKine_.position()(2) = 0.0; }
   }
 

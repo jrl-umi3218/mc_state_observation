@@ -1,6 +1,8 @@
 #include <mc_observers/ObserverMacros.h>
 
 #include "mc_state_observation/measurements/measurements.h"
+#include <fstream>
+#include <iomanip>
 #include <mc_state_observation/MCWaiko.h>
 #include <mc_state_observation/gui_helpers.h>
 #include <state-observation/observer/waiko-humanoid.hpp>
@@ -107,6 +109,9 @@ void MCWaiko::configure(const mc_control::MCController & ctl, const mc_rtc::Conf
 
 void MCWaiko::reset(const mc_control::MCController & ctl)
 {
+  std::ofstream f("/tmp/timings_waiko.txt", std::ios::out);
+  f.close();
+
   const auto & robot = ctl.robot(robot_);
   const auto & realRobot = ctl.realRobot(robot_);
 
@@ -165,6 +170,7 @@ void MCWaiko::reset(const mc_control::MCController & ctl)
 
 bool MCWaiko::run(const mc_control::MCController & ctl)
 {
+  estimator_.iterTime_ = 0.0;
   auto & inputRobot = my_robots_->robot("inputRobot");
   const auto & realRobot = ctl.realRobot(robot_);
   auto & logger = (const_cast<mc_control::MCController &>(ctl)).logger();
@@ -219,26 +225,26 @@ bool MCWaiko::run(const mc_control::MCController & ctl)
 
     conversions::kinematics::addToLogger(logger, newContact.worldRefKine_,
                                          "Waiko_contacts_" + newContact.name() + "_refPose");
-    conversions::kinematics::addToLogger(logger, newContact.worldBodyKineFromRef_,
-                                         "Waiko_contacts_" + newContact.name() + "_worldImuKineFromRef");
-    conversions::kinematics::addToLogger(logger, newContact.currentWorldKine_,
-                                         "Waiko_contacts_" + newContact.name() + "_currentWorldContactKine");
-    conversions::kinematics::addToLogger(logger, newContact.bodyContactKine_,
-                                         "Waiko_contacts_" + newContact.name() + "_bodyContactKine_");
-    conversions::kinematics::addToLogger(logger, newContact.worldRefKineBeforeCorrection_,
-                                         "Waiko_contacts_" + newContact.name() + "_refPoseBeforeCorrection");
-    conversions::kinematics::addToLogger(logger, newContact.newIncomingWorldRefKine_,
-                                         "Waiko_contacts_" + newContact.name() + "_newIncomingWorldRefKine");
+    // conversions::kinematics::addToLogger(logger, newContact.worldBodyKineFromRef_,
+    //                                      "Waiko_contacts_" + newContact.name() + "_worldImuKineFromRef");
+    // conversions::kinematics::addToLogger(logger, newContact.currentWorldKine_,
+    //                                      "Waiko_contacts_" + newContact.name() + "_currentWorldContactKine");
+    // conversions::kinematics::addToLogger(logger, newContact.bodyContactKine_,
+    //                                      "Waiko_contacts_" + newContact.name() + "_bodyContactKine_");
+    // conversions::kinematics::addToLogger(logger, newContact.worldRefKineBeforeCorrection_,
+    //                                      "Waiko_contacts_" + newContact.name() + "_refPoseBeforeCorrection");
+    // conversions::kinematics::addToLogger(logger, newContact.newIncomingWorldRefKine_,
+    //                                      "Waiko_contacts_" + newContact.name() + "_newIncomingWorldRefKine");
 
     logger.addLogEntry("Waiko_contacts_" + newContact.name() + "_isSet", &newContact,
                        [&newContact]() -> std::string { return newContact.isSet() ? "Set" : "notSet"; });
 
-    logger.addLogEntry("Waiko_contacts_" + newContact.name() + "_lambda", &newContact,
-                       [&newContact]() -> double { return newContact.lambda(); });
-    logger.addLogEntry("Waiko_contacts_" + newContact.name() + "_lifeTime", &newContact,
-                       [&newContact]() -> double { return newContact.lifeTime(); });
-    logger.addLogEntry("Waiko_contacts_" + newContact.name() + "_correctionWeightingCoeff", &newContact,
-                       [&newContact]() -> double { return newContact.correctionWeightingCoeff(); });
+    // logger.addLogEntry("Waiko_contacts_" + newContact.name() + "_lambda", &newContact,
+    //                    [&newContact]() -> double { return newContact.lambda(); });
+    // logger.addLogEntry("Waiko_contacts_" + newContact.name() + "_lifeTime", &newContact,
+    //                    [&newContact]() -> double { return newContact.lifeTime(); });
+    // logger.addLogEntry("Waiko_contacts_" + newContact.name() + "_correctionWeightingCoeff", &newContact,
+    //                    [&newContact]() -> double { return newContact.correctionWeightingCoeff(); });
   };
   auto onMaintainedContact = [&contactList](measurements::ContactWithSensor & maintainedContact)
   { contactList.insert(maintainedContact.name()); };
@@ -294,6 +300,9 @@ bool MCWaiko::run(const mc_control::MCController & ctl)
   my_robots_->robot().mbc().q = realRobot.mbc().q;
   update(my_robots_->robot());
 
+  // std::ofstream f("/tmp/timings_waiko.txt", std::ios::app);
+  // if(f) f << std::fixed << std::setprecision(6) << estimator_.iterTime_ << '\n';
+
   return true;
 }
 
@@ -346,6 +355,9 @@ void MCWaiko::runEstimator(const mc_control::MCController & ctl)
   // obtain the velocity of the IMU. We will then consider it as zero and consider it as constant with the linear
   // acceleration as zero too.
   // When switching from one mode to another, we consider x1hat = x1 before the estimation to avoid discontinuities.
+
+  auto start = std::chrono::high_resolution_clock::now();
+
   if(odometryManager_.maintainedContacts().size() == 0)
   {
     estimator_.setAlpha(30);
@@ -364,11 +376,17 @@ void MCWaiko::runEstimator(const mc_control::MCController & ctl)
     yv_ = -imu.angularVelocity().cross(imuAnchorKine_.position()) - imuAnchorKine_.linVel();
   }
 
+  auto end = std::chrono::high_resolution_clock::now();
+  estimator_.iterTime_ += std::chrono::duration<double, std::micro>(end - start).count();
+
   estimator_.setInput(yv_, imu.linearAcceleration(), imu.angularVelocity(), k, false);
 
   if(odometryManager_.maintainedContacts().size() > 0)
   {
+    auto start = std::chrono::high_resolution_clock::now();
     worldImuLocKineFromAnchor_ = odometryManager_.getWorldBodyLocalKineFromAnchor(true, true);
+    auto end = std::chrono::high_resolution_clock::now();
+    estimator_.iterTime_ += std::chrono::duration<double, std::micro>(end - start).count();
     worldImuKineFromAnchor_ = worldImuLocKineFromAnchor_;
 
     estimator_.addContactInput(
@@ -391,7 +409,8 @@ void MCWaiko::runEstimator(const mc_control::MCController & ctl)
   odometryManager_.run(stateObservation::odometry::LeggedOdometryManager::KineParams(estimatedWorldImuKine_)
                            .attitudeMeas(estimatedWorldImuKine_.orientation.toMatrix3())
                            .positionMeas(estimatedWorldImuKine_.position()));
-
+  estimator_.iterTime_ += std::chrono::duration<double, std::micro>(end - start).count();
+  estimator_.iterTime_ += odometryManager_.iterTime_;
   updatePoseAndVel();
 
   /* Backups */

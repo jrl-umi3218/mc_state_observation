@@ -1,6 +1,8 @@
 #include <mc_observers/ObserverMacros.h>
 
 #include "mc_state_observation/measurements/measurements.h"
+#include <fstream>
+#include <iomanip>
 #include <mc_state_observation/TiltObserver.h>
 #include <mc_state_observation/gui_helpers.h>
 
@@ -132,6 +134,9 @@ void TiltObserver::configure(const mc_control::MCController & ctl, const mc_rtc:
 
 void TiltObserver::reset(const mc_control::MCController & ctl)
 {
+  std::ofstream f("/tmp/timings_tilt.txt", std::ios::out);
+  f.close();
+
   const auto & robot = ctl.robot(robot_);
   const auto & realRobot = ctl.realRobot(robot_);
 
@@ -176,7 +181,7 @@ void TiltObserver::reset(const mc_control::MCController & ctl)
 
 bool TiltObserver::run(const mc_control::MCController & ctl)
 {
-
+  estimator_.iterTime_ = 0.0;
   const auto & realRobot = ctl.realRobot(robot_);
   auto & logger = (const_cast<mc_control::MCController &>(ctl)).logger();
 
@@ -216,6 +221,9 @@ bool TiltObserver::run(const mc_control::MCController & ctl)
   /* Update of the observed robot */
   my_robots_->robot().mbc().q = realRobot.mbc().q;
   update(my_robots_->robot());
+
+  // std::ofstream f("/tmp/timings_tilt.txt", std::ios::app);
+  // if(f) f << std::fixed << std::setprecision(6) << estimator_.iterTime_ << '\n';
 
   return true;
 }
@@ -376,6 +384,8 @@ void TiltObserver::runTiltEstimator(const mc_control::MCController & ctl, const 
 
   // computation of the local linear velocity of the IMU in the world.
 
+  auto start = std::chrono::high_resolution_clock::now();
+
   if(odometryManager_.odometryType_ == measurements::OdometryType::None) // case if we don't use odometry
   {
     yv_ = worldImuKine_ctl_.orientation.toMatrix3().transpose() * worldAnchorKine_ctl_.linVel()
@@ -403,9 +413,17 @@ void TiltObserver::runTiltEstimator(const mc_control::MCController & ctl, const 
       estimator_.setBeta(beta_);
       //  estimator_.setGamma(gamma_);
 
+      auto start = std::chrono::high_resolution_clock::now();
+
       yv_ = -imu.angularVelocity().cross(imuAnchorKine_.position()) - imuAnchorKine_.linVel();
+
+      auto end = std::chrono::high_resolution_clock::now();
+      estimator_.iterTime_ += std::chrono::duration<double, std::micro>(end - start).count();
     }
   }
+  auto end = std::chrono::high_resolution_clock::now();
+  estimator_.iterTime_ += std::chrono::duration<double, std::micro>(end - start).count();
+
   estimator_.setMeasurement(yv_, imu.linearAcceleration(), imu.angularVelocity(), k + 1);
   yk_.segment(0, 3) = yv_;
   yk_.segment(3, 3) = imu.linearAcceleration();
@@ -429,12 +447,19 @@ void TiltObserver::runTiltEstimator(const mc_control::MCController & ctl, const 
 
     // Orientation of the imu in the world obtained from the estimated tilt and the yaw of the IMU in the odometry
     // robot. This yaw is used by default as it will be replace by the one coming from the contacts.
+    auto start = std::chrono::high_resolution_clock::now();
+
     estimatedRotationIMU_ = so::kine::mergeTiltWithYawAxisAgnostic(tilt, worldImuKine_.orientation.toMatrix3());
+
+    auto end = std::chrono::high_resolution_clock::now();
+    estimator_.iterTime_ += std::chrono::duration<double, std::micro>(end - start).count();
 
     // Estimated orientation of the floating base in the world (especially the tilt)
     R_0_fb_ = estimatedRotationIMU_ * fbImuKine_.orientation.toMatrix3().transpose();
 
     odometryManager_.run(ctl, odometry::LeggedOdometryManager::KineParams(poseW_).tiltMeas(R_0_fb_));
+
+    estimator_.iterTime_ += odometryManager_.iterTime_;
   }
   else
   {

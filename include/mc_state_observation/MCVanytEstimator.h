@@ -230,6 +230,8 @@ protected:
 
   // delayed IMU orientation measurement
   DelayedOriMeasurement delayedOriMeas_;
+
+  double iterTime_;
 };
 
 } // namespace mc_state_observation
