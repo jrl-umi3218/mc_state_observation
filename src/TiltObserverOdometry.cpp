@@ -1,9 +1,8 @@
 #include <mc_observers/ObserverMacros.h>
 
-#include <mc_state_observation/MCWaiko.h>
+#include <mc_state_observation/TiltObserverOdometry.h>
 #include <mc_state_observation/conversions/kinematics.h>
 #include <mc_state_observation/gui_helpers.h>
-#include <state-observation/observer/waiko-humanoid.hpp>
 
 namespace mc_state_observation
 {
@@ -12,18 +11,17 @@ namespace so = stateObservation;
 
 using OdometryType = measurements::OdometryType;
 
-MCWaiko::MCWaiko(const std::string & type, double dt, bool asBackup)
-: mc_observers::Observer(type, dt), estimator_(dt, alpha_, beta_, 1 / (2 * M_PI), rho_, mu_), odometryManager_(dt)
+TiltObserverOdometry::TiltObserverOdometry(const std::string & type, double dt, bool asBackup)
+: TiltObserver(type, dt, asBackup), odometryManager_(dt)
 {
   asBackup_ = asBackup;
 }
 
-void MCWaiko::configure(const mc_control::MCController & ctl, const mc_rtc::Configuration & config)
+void TiltObserverOdometry::configure(const mc_control::MCController & ctl, const mc_rtc::Configuration & config)
 {
   robot_ = config("robot", ctl.robot().name());
   imuSensor_ = config("imuSensor", ctl.robot().bodySensor().name());
 
-  config("maxAnchorFrameDiscontinuity", maxAnchorFrameDiscontinuity_);
   config("updateRobot", updateRobot_);
   config("updateSensor", updateSensor_);
   config("withDebugLogs", withDebugLogs_);
@@ -35,14 +33,10 @@ void MCWaiko::configure(const mc_control::MCController & ctl, const mc_rtc::Conf
   filterGainsConfig("initAlpha", alpha_);
   filterGainsConfig("initBeta", beta_);
   filterGainsConfig("initGamma", gamma_);
-  filterGainsConfig("initMu", mu_);
-  filterGainsConfig("initRho", rho_);
 
   filterGainsConfig("finalAlpha", finalAlpha_);
   filterGainsConfig("finalBeta", finalBeta_);
   filterGainsConfig("finalGamma", finalGamma_);
-  filterGainsConfig("finalMu", finalMu_);
-  filterGainsConfig("finalRho", finalRho_);
 
   // filterGainsConfig("finalEta", eta_contacts_final_);
 
@@ -107,8 +101,11 @@ void MCWaiko::configure(const mc_control::MCController & ctl, const mc_rtc::Conf
   }
 }
 
-void MCWaiko::reset(const mc_control::MCController & ctl)
+void TiltObserverOdometry::reset(const mc_control::MCController & ctl)
 {
+  std::ofstream f("/tmp/timings_waiko.txt", std::ios::out);
+  f.close();
+
   const auto & robot = ctl.robot(robot_);
   const auto & realRobot = ctl.realRobot(robot_);
 
@@ -140,10 +137,10 @@ void MCWaiko::reset(const mc_control::MCController & ctl)
   const Eigen::Matrix3d cOri = (imu.X_b_s() * realRobot.bodyPosW(imu.parentBody())).rotation();
   so::Vector3 initX2 = initWorldImuKine.orientation.toMatrix3().transpose() * so::Vector3::UnitZ();
 
-  estimator_.initEstimator(so::Vector3::Zero(), initX2, initWorldImuKine.orientation.toVector4(),
-                           initWorldImuKine.orientation.toMatrix3().transpose() * initWorldImuKine.position());
+  initX_ = Eigen::RowVectorXd(9);
+  initX_ << so::Vector3::Zero(), initX2, initX2;
+  estimator_.initEstimator(initX_);
 
-  anchorFrameJumped_ = false;
   iter_ = 0;
 
   stateObservation::kine::Kinematics initKine =
@@ -154,11 +151,9 @@ void MCWaiko::reset(const mc_control::MCController & ctl)
   estimator_.setAlpha(alpha_);
   estimator_.setBeta(beta_);
   estimator_.setGamma(gamma_);
-  estimator_.setRho(rho_);
-  estimator_.setMu(mu_);
 }
 
-bool MCWaiko::run(const mc_control::MCController & ctl)
+bool TiltObserverOdometry::run(const mc_control::MCController & ctl)
 {
   auto & inputRobot = my_robots_->robot("inputRobot");
   const auto & realRobot = ctl.realRobot(robot_);
@@ -184,11 +179,9 @@ bool MCWaiko::run(const mc_control::MCController & ctl)
     alpha_ = finalAlpha_;
     beta_ = finalBeta_;
     gamma_ = finalGamma_;
-    mu_ = finalMu_;
-    rho_ = finalRho_;
   }
 
-  updateNecessaryFramesOdom(ctl, inputRobot);
+  updateNecessaryFrames(ctl, inputRobot);
 
   auto onNewContactOdom = [&inputRobot, &logger, this](stateObservation::odometry::LoContact & newContact)
   {
@@ -308,39 +301,21 @@ bool MCWaiko::run(const mc_control::MCController & ctl)
     estimator_.setAlpha(alpha_);
     estimator_.setBeta(beta_);
     estimator_.setGamma(gamma_);
-    estimator_.setRho(rho_);
-    estimator_.setMu(mu_);
 
     yv_ = -imu.angularVelocity().cross(imuAnchorKine_.position()) - imuAnchorKine_.linVel();
   }
 
-  estimator_.setInput(yv_, imu.linearAcceleration(), imu.angularVelocity(), k, false);
-
-  if(odometryManager_.maintainedContacts().size() > 0)
-  {
-    worldImuLocKineFromAnchor_ = odometryManager_.getWorldBodyLocalKineFromAnchor(true, true);
-    worldImuKineFromAnchor_ = worldImuLocKineFromAnchor_;
-
-    estimator_.addContactInput(
-        so::WaikoHumanoid::InputWaiko::ContactInput(worldImuLocKineFromAnchor_.orientation.toMatrix3(),
-                                                    worldImuLocKineFromAnchor_.position()),
-        k);
-  }
+  estimator_.setMeasurement(yv_, imu.linearAcceleration(), imu.angularVelocity(), k + 1);
 
   // estimation of the state with the complementary filters
   estimator_.getEstimatedState(k + 1);
 
-  so::kine::LocalKinematics estimatedWorldImuLocKine;
-  estimatedWorldImuLocKine.position = estimator_.getEstimatedLocPosition();
-  estimatedWorldImuLocKine.orientation = estimator_.getEstimatedOrientation();
-  estimatedWorldImuLocKine.linVel = estimator_.getEstimatedLocLinVel();
-  estimatedWorldImuLocKine.angVel = imu.angularVelocity();
-
-  estimatedWorldImuKine_ = estimatedWorldImuLocKine;
-
   odometryManager_.run(stateObservation::odometry::LeggedOdometryManager::KineParams(estimatedWorldImuKine_)
-                           .attitudeMeas(estimatedWorldImuKine_.orientation.toMatrix3())
-                           .positionMeas(estimatedWorldImuKine_.position()));
+                           .tiltMeas(estimatedWorldImuKine_.orientation.toMatrix3()));
+
+  estimatedWorldImuKine_.linVel = estimatedWorldImuKine_.orientation.toMatrix3() * estimator_.getEstimatedLocLinVel();
+  estimatedWorldImuKine_.angVel = estimatedWorldImuKine_.orientation.toMatrix3() * imu.angularVelocity();
+
   updatePoseAndVel();
 
   /* Backups */
@@ -357,46 +332,8 @@ bool MCWaiko::run(const mc_control::MCController & ctl)
   return true;
 }
 
-void MCWaiko::updatePoseAndVel()
-{
-  estimatedWorldFbKine_ = estimatedWorldImuKine_ * fbImuKine_.getInverse();
-
-  poseW_.translation() = estimatedWorldFbKine_.position();
-  poseW_.rotation() = estimatedWorldFbKine_.orientation.toMatrix3().transpose();
-
-  velW_.linear() = estimatedWorldFbKine_.linVel();
-  velW_.angular() = estimatedWorldFbKine_.angVel();
-}
-
-void MCWaiko::update(mc_control::MCController & ctl)
-{
-  auto & realRobot = ctl.realRobot(robot_);
-  if(updateRobot_)
-  {
-    update(realRobot);
-    realRobot.forwardKinematics();
-    realRobot.forwardVelocity();
-  }
-
-  if(updateSensor_)
-  {
-    auto & robot = ctl.robot(robot_);
-
-    auto & imu = const_cast<mc_rbdyn::BodySensor &>(robot.bodySensor(imuSensor_));
-    auto & rimu = const_cast<mc_rbdyn::BodySensor &>(realRobot.bodySensor(imuSensor_));
-
-    imu.orientation(estimatedWorldImuKine_.orientation.toQuaternion().inverse());
-    rimu.orientation(estimatedWorldImuKine_.orientation.toQuaternion().inverse());
-  }
-}
-
-void MCWaiko::update(mc_rbdyn::Robot & robot)
-{
-  robot.posW(poseW_);
-  robot.velW(velW_);
-}
-
-void MCWaiko::updateNecessaryFramesOdom(const mc_control::MCController & ctl, const mc_rbdyn::Robot & odomRobot)
+void TiltObserverOdometry::updateNecessaryFrames(const mc_control::MCController & ctl,
+                                                 const mc_rbdyn::Robot & odomRobot)
 
 {
   // pose of the floating base' frame in the world for the odometry robot
@@ -422,40 +359,46 @@ void MCWaiko::updateNecessaryFramesOdom(const mc_control::MCController & ctl, co
   fbImuKine_ = worldFbKine_.getInverse() * worldImuKine_;
 }
 
-const so::kine::Kinematics MCWaiko::backupFb(boost::circular_buffer<so::kine::Kinematics> * koBackupFbKinematics)
+void TiltObserverOdometry::updatePoseAndVel()
 {
-  // new initial pose of the floating base
-  so::kine::Kinematics worldResetKine = *(koBackupFbKinematics->begin());
+  estimatedWorldFbKine_ = estimatedWorldImuKine_ * fbImuKine_.getInverse();
 
-  // original initial pose of the floating base
-  so::kine::Kinematics worldFbInitBackup = backupFbKinematics_.front();
+  poseW_.translation() = estimatedWorldFbKine_.position();
+  poseW_.rotation() = estimatedWorldFbKine_.orientation.toMatrix3().transpose();
 
-  so::kine::Kinematics fbWorldInitBackup = worldFbInitBackup.getInverse();
-
-  // we apply the transformation from the initial pose to the intermediates pose estimated by the tilt estimator to
-  // the new starting pose of the Kinetics Observer
-  for(int i = 0; i < koBackupFbKinematics->size(); i++)
-  {
-    // Intermediary pose of the floating base estimated by the tilt estimator
-    so::kine::Kinematics worldFbIntermBackup = backupFbKinematics_.at(i);
-
-    // transformation between the initial and the intermediary pose during the backup interval
-    so::kine::Kinematics initInterm = fbWorldInitBackup * worldFbIntermBackup;
-
-    koBackupFbKinematics->at(i) = worldResetKine * initInterm;
-  }
-
-  so::Vector3 tiltLocalLinVel = poseW_.rotation() * velW_.linear();
-  so::Vector3 tiltLocalAngVel = poseW_.rotation() * velW_.angular();
-
-  // koBackupFbKinematics->back() is the new last pose of the kinetics observer
-  koBackupFbKinematics->back().linVel = koBackupFbKinematics->back().orientation.toMatrix3() * tiltLocalLinVel;
-  koBackupFbKinematics->back().angVel = koBackupFbKinematics->back().orientation.toMatrix3() * tiltLocalAngVel;
-
-  return koBackupFbKinematics->back();
+  velW_.linear() = estimatedWorldFbKine_.linVel();
+  velW_.angular() = estimatedWorldFbKine_.angVel();
 }
 
-void MCWaiko::setOdometryType(stateObservation::odometry::OdometryType newOdometryType)
+void TiltObserverOdometry::update(mc_control::MCController & ctl)
+{
+  auto & realRobot = ctl.realRobot(robot_);
+  if(updateRobot_)
+  {
+    update(realRobot);
+    realRobot.forwardKinematics();
+    realRobot.forwardVelocity();
+  }
+
+  if(updateSensor_)
+  {
+    auto & robot = ctl.robot(robot_);
+
+    auto & imu = const_cast<mc_rbdyn::BodySensor &>(robot.bodySensor(imuSensor_));
+    auto & rimu = const_cast<mc_rbdyn::BodySensor &>(realRobot.bodySensor(imuSensor_));
+
+    imu.orientation(estimatedWorldImuKine_.orientation.toQuaternion().inverse());
+    rimu.orientation(estimatedWorldImuKine_.orientation.toQuaternion().inverse());
+  }
+}
+
+void TiltObserverOdometry::update(mc_rbdyn::Robot & robot)
+{
+  robot.posW(poseW_);
+  robot.velW(velW_);
+}
+
+void TiltObserverOdometry::setOdometryType(stateObservation::odometry::OdometryType newOdometryType)
 {
   if((newOdometryType != stateObservation::odometry::OdometryType::Odometry6d)
      && (newOdometryType != stateObservation::odometry::OdometryType::Flat))
@@ -466,46 +409,24 @@ void MCWaiko::setOdometryType(stateObservation::odometry::OdometryType newOdomet
   odometryManager_.setOdometryType(newOdometryType);
 }
 
-void MCWaiko::addToLogger(const mc_control::MCController & ctl, mc_rtc::Logger & logger, const std::string & category)
+void TiltObserverOdometry::addToLogger(const mc_control::MCController & ctl,
+                                       mc_rtc::Logger & logger,
+                                       const std::string & category)
 {
   category_ = category;
 
   logger.addLogEntry(category + "_FloatingBase_world_pose", [this]() -> const sva::PTransformd & { return poseW_; });
   logger.addLogEntry(category + "_FloatingBase_world_vel", [this]() -> const sva::MotionVecd & { return velW_; });
 
-  logger.addLogEntry(category + "_estimatedState_pl",
-                     [this]() -> so::Vector3 { return estimator_.getEstimatedLocPosition(); });
-
-  logger.addLogEntry(category + "_estimatedState_p",
-                     [this]() -> so::Vector3 { return estimatedWorldImuKine_.position(); });
-
   logger.addLogEntry(category + "_estimatedState_x1",
                      [this]() -> so::Vector3 { return estimator_.getEstimatedLocLinVel(); });
-
+  logger.addLogEntry(category + "_estimatedState_x2prime",
+                     [this]() -> so::Vector3 { return estimator_.getEstimatedIntermediaryTilt().normalized(); });
+  logger.addLogEntry(category + "_estimatedState_x2",
+                     [this]() -> so::Vector3 { return estimator_.getEstimatedTilt().normalized(); });
   if(withDebugLogs_)
   {
 
-    logger.addLogEntry(category + "_debug_measuredOri_",
-                       [this]() -> Eigen::Quaterniond { return measuredOri_.toQuaternion().inverse(); });
-
-    // logger.addLogEntry(category + "_debug_corrections_oriCorrection_",
-    //                    [this]() -> const so::Vector3 & { return estimator_.getOriCorrection(); });
-    logger.addLogEntry(category + "_debug_corrections_oriCorrFromOriMeas_",
-                       [this]() -> const so::Vector3 & { return estimator_.getOriCorrFromOriMeas(); });
-    logger.addLogEntry(category + "_debug_corrections_posCorrFromContactPos_",
-                       [this]() -> const so::Vector3 & { return estimator_.getPosCorrectionFromContactPos(); });
-    logger.addLogEntry(category + "_debug_corrections_oriCorrFromContactPos_",
-                       [this]() -> const so::Vector3 & { return estimator_.geOriCorrectionFromContactPos(); });
-
-    logger.addLogEntry(category + "_estimatedState_x2prime",
-                       [this]() -> so::Vector3 { return estimator_.getEstimatedTilt().normalized(); });
-    logger.addLogEntry(category + "_estimatedState_R",
-                       [this]()
-                       {
-                         so::kine::Orientation ori;
-                         ori = estimator_.getEstimatedOrientation();
-                         return ori.toQuaternion().inverse();
-                       });
     logger.addLogEntry(category + "_realRobotState_x1",
                        [this, &ctl]() -> so::Vector3
                        {
@@ -557,7 +478,6 @@ void MCWaiko::addToLogger(const mc_control::MCController & ctl, mc_rtc::Logger &
     logger.addLogEntry(category + "_constants_gains_alpha", [this]() -> double { return estimator_.getAlpha(); });
     logger.addLogEntry(category + "_constants_gains_beta", [this]() -> double { return estimator_.getBeta(); });
     logger.addLogEntry(category + "_constants_gains_gamma", [this]() -> double { return gamma_; });
-    logger.addLogEntry(category + "_constants_gains_rho", [this]() -> double { return estimator_.getRho(); });
 
     logger.addLogEntry(category + "_debug_OdometryType", [this]() -> std::string
                        { return stateObservation::odometry::odometryTypeToSstring(odometryManager_.odometryType_); });
@@ -730,13 +650,10 @@ void MCWaiko::addToLogger(const mc_control::MCController & ctl, mc_rtc::Logger &
 
     conversions::kinematics::addToLogger(logger, worldFbKine_, category + "_debug_worldFbKine_");
     conversions::kinematics::addToLogger(logger, estimatedWorldImuKine_, category + "_debug_correctedWorldImuKine_");
-    conversions::kinematics::addToLogger(logger, worldImuKineFromAnchor_, category + "_debug_worldImuKineFromAnchor_");
-    conversions::kinematics::addToLogger(logger, worldImuLocKineFromAnchor_,
-                                         category + "_debug_worldImuLocKineFromAnchor_");
   }
 }
 
-void MCWaiko::removeFromLogger(mc_rtc::Logger & logger, const std::string & category)
+void TiltObserverOdometry::removeFromLogger(mc_rtc::Logger & logger, const std::string & category)
 {
   logger.removeLogEntry(category + "_imuVelC");
   logger.removeLogEntry(category + "_imuPoseC");
@@ -744,11 +661,13 @@ void MCWaiko::removeFromLogger(mc_rtc::Logger & logger, const std::string & cate
   logger.removeLogEntry(category + "_controlAnchorFrame");
 }
 
-void MCWaiko::addToGUI(const mc_control::MCController &, mc_rtc::gui::StateBuilder &, const std::vector<std::string> &)
+void TiltObserverOdometry::addToGUI(const mc_control::MCController &,
+                                    mc_rtc::gui::StateBuilder &,
+                                    const std::vector<std::string> &)
 {
   using namespace mc_state_observation::gui;
   // gui.addElement(category, make_input_element("alpha", alpha_), make_input_element("beta", beta_));
 }
 
 } // namespace mc_state_observation
-EXPORT_OBSERVER_MODULE("MCWaiko", mc_state_observation::MCWaiko)
+EXPORT_OBSERVER_MODULE("Valinor", mc_state_observation::TiltObserverOdometry)

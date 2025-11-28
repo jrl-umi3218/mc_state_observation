@@ -1,9 +1,15 @@
 #pragma once
 
+#include <mc_observers/Observer.h>
+#include <mc_rbdyn/Robot.h>
 #include <boost/circular_buffer.hpp>
 
-#include <mc_state_observation/odometry/LeggedOdometryManager.h>
+#include <mc_state_observation/measurements/ContactsDetector.hpp>
+
+#include "mc_state_observation/measurements/measurements.h"
 #include <state-observation/observer/tilt-estimator-humanoid.hpp>
+#include <state-observation/tools/measurements-manager/measurements.hpp>
+#include <state-observation/tools/odometry/legged-odometry-manager.hpp>
 
 namespace mc_state_observation
 {
@@ -31,21 +37,12 @@ public:
    * @param ctl Controller.
    * @param odomRobot
    */
-  void updateNecessaryFramesNoOdometry(const mc_control::MCController & ctl, const mc_rbdyn::Robot & updatedRobot);
-
-  /**
-   * @brief Updates the frames that are necessary for the state estimation when using odometry.
-   * @details In particular the kinematics of the anchor in the IMU frame.
-   *
-   * @param ctl Controller.
-   * @param odomRobot
-   */
-  void updateNecessaryFramesOdom(const mc_control::MCController & ctl, const mc_rbdyn::Robot & updatedRobot);
+  virtual void updateNecessaryFrames(const mc_control::MCController & ctl, const mc_rbdyn::Robot & updatedRobot);
 
   /// @brief updates the kinematics of the anchor frame of the robot when not performing odometry
   /// @param ctl Controller
   /// @param updatedRobot robot corresponding to the control robot with updated encoders
-  void updateAnchorFrameNoOdometry(const mc_control::MCController & ctl, const mc_rbdyn::Robot & updatedRobot);
+  void updateAnchorFrame(const mc_control::MCController & ctl, const mc_rbdyn::Robot & updatedRobot);
 
   /// @brief updates the pose and the velcoity of the floating base in the world frame using our estimation results
   /// @param localWorldImuLinVel estimated local linear velocity of the IMU in the world frame
@@ -53,19 +50,9 @@ public:
   void updatePoseAndVel(const stateObservation::Vector3 & localWorldImuLinVel,
                         const stateObservation::Vector3 & localWorldImuAngVel);
 
-  /*! \brief update the robot pose in the world only for visualization purpose
-   *
-   * @param updatedRobot Robot with the kinematics of the control robot but with updated joint values.
-   */
-  void runTiltEstimator(const mc_control::MCController & ctl, const mc_rbdyn::Robot & updatedRobot);
-
   /// @brief Updates the real robot and/or the IMU signal using our estimation results
   /// @param ctl Controller
   void update(mc_control::MCController & ctl) override;
-
-  /// @brief Sets the type of the odometry
-  /// @param newOdometryType The new type of odometry to use.
-  void setOdometryType(measurements::OdometryType newOdometryType);
 
   /// @brief Backup function that returns the estimated displacement of the floating base in the world wrt to the
   /// initial one over the backup interval.
@@ -88,7 +75,7 @@ protected:
    * @param robot Robot to update
    */
 
-  void update(mc_rbdyn::Robot & robot);
+  virtual void update(mc_rbdyn::Robot & robot);
 
   /*! \brief Add observer from logger
    *
@@ -194,10 +181,6 @@ protected:
   sva::PTransformd prevPoseW_; ///< Estimated pose of the floating-base in world frame */
   sva::MotionVecd velW_; ///< Estimated velocity of the floating-base in world frame */
 
-  // anchor frame's variables
-  double maxAnchorFrameDiscontinuity_ =
-      0.01; ///< Threshold (norm) above wich the anchor frame is considered to have had a discontinuity
-  bool anchorFrameJumped_; /** Detects whether the anchor frame had a discontinuity */
   int iter_; // iterations ellapsed since the beginning of the  estimation. We don't compute the anchor frame
              // velocity while it is below "itersBeforeAnchorsVel_"
   int itersBeforeAnchorsVel_ = 10; // iteration from which we start to compute the velocity of the anchor frame. Avoids
@@ -215,12 +198,10 @@ protected:
   // "measured" local linear velocity of the IMU
   stateObservation::Vector3 yv_;
   // velocity of the IMU in the anchor frame
-  sva::MotionVecd imuVelC_;
-  // pose of the IMU in the anchor frame
-  sva::PTransformd X_C_IMU_;
+
+  bool withDebugLogs_ = false;
 
 public:
-  odometry::LeggedOdometryManager odometryManager_; // manager for the legged odometry
   // estimated kinematics of the floating base in the world
   stateObservation::kine::Kinematics correctedWorldFbKine_;
   // estimated kinematics of the IMU in the world

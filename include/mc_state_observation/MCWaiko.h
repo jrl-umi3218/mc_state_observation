@@ -3,11 +3,10 @@
 #include <mc_control/MCController.h>
 #include <mc_observers/Observer.h>
 #include <boost/circular_buffer.hpp>
-#include <mc_state_observation/odometry/LeggedOdometryManager.h>
 
-#include <forward_list>
+#include <mc_state_observation/measurements/ContactsDetector.hpp>
+
 #include <state-observation/observer/waiko-humanoid.hpp>
-#include <state-observation/tools/measurements-manager/Contact.hpp>
 #include <state-observation/tools/odometry/legged-odometry-manager.hpp>
 #include <state-observation/tools/rigid-body-kinematics.hpp>
 
@@ -43,19 +42,13 @@ public:
   /// @brief updates the pose and the velcoity of the floating base in the world frame using our estimation results
   void updatePoseAndVel();
 
-  /*! \brief update the robot pose in the world only for visualization purpose
-   *
-   * @param odomRobot Robot with the kinematics of the control robot but with updated joint values.
-   */
-  void runEstimator(const mc_control::MCController & ctl);
-
   /// @brief Updates the real robot and/or the IMU signal using our estimation results
   /// @param ctl Controller
   void update(mc_control::MCController & ctl) override;
 
   /// @brief Sets the type of the odometry
   /// @param newOdometryType The new type of odometry to use.
-  void setOdometryType(stateObservation::measurements::OdometryType newOdometryType);
+  void setOdometryType(stateObservation::odometry::OdometryType newOdometryType);
 
   /// @brief Backup function that returns the estimated displacement of the floating base in the world wrt to the
   /// initial one over the backup interval.
@@ -207,8 +200,9 @@ protected:
                                    // initial jumps due to the finite differences.
 
   stateObservation::odometry::LeggedOdometryManager odometryManager_; // manager for the legged odometry
-  using ContactsManager = measurements::ContactsManager<measurements::ContactWithSensor>;
-  ContactsManager contactsManager_;
+  using WaikoContact = stateObservation::odometry::LoContact;
+  using ContactsDetector = measurements::ContactsDetector<stateObservation::odometry::LoContact>;
+  ContactsDetector contactsDetector_;
 
   /* Variables for the use as a backup */
   // indicates if the estimator is used as a backup or not
@@ -219,10 +213,6 @@ protected:
   /* Debug variables */
   // "measured" local linear velocity of the IMU
   stateObservation::Vector3 yv_;
-  // velocity of the IMU in the anchor frame
-  sva::MotionVecd imuVelC_;
-  // pose of the IMU in the anchor frame
-  sva::PTransformd X_C_IMU_;
 
   stateObservation::kine::Orientation measuredOri_ = stateObservation::kine::Orientation::zeroRotation();
   stateObservation::Vector measurements_;
@@ -230,10 +220,8 @@ protected:
   stateObservation::kine::Kinematics worldImuKineFromAnchor_;
   stateObservation::kine::LocalKinematics worldImuLocKineFromAnchor_;
   stateObservation::kine::Kinematics worldAnchorKine_;
-  // zero frame transformation
-  sva::PTransformd zeroPose_;
-  // zero velocity or acceleration
-  sva::MotionVecd zeroMotion_;
+
+  bool withDebugLogs_ = false;
 };
 
 } // namespace mc_state_observation

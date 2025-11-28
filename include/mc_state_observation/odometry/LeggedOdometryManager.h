@@ -732,8 +732,6 @@ public:
 
   // Indicates if the mode of computation of the anchor point changed.
   bool anchorPointMethodChanged_ = false;
-
-  double iterTime_;
 };
 
 } // namespace mc_state_observation::odometry

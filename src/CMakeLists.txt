@@ -53,13 +53,14 @@ endmacro()
 
 add_so_observer(AttitudeObserver)
 # add_so_observer(NaiveOdometry)
-add_so_observer(TiltObserver)
-add_so_observer(MCWaiko)
-add_so_observer(MCVanytEstimator)
+add_so_observer(TiltObserverOdometry)
+add_so_observer(MCWaiko) 
+add_so_observer(TiltObserver) 
+# add_so_observer(MCVanytEstimator)
 # add_so_observer(MCViking)
 # add_so_observer(MocapVisualizer)
 
-add_kineticsobserver()
+# add_kineticsobserver()
 
 if(WITH_ROS_OBSERVERS)
   add_simple_observer(MocapObserver)
