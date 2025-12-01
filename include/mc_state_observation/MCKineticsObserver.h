@@ -5,7 +5,8 @@
 #include <boost/circular_buffer.hpp>
 
 #include "mc_state_observation/TiltObserver.h"
-#include <mc_state_observation/measurements/ContactsManager.h>
+#include "mc_state_observation/measurements/ContactsDetector.h"
+#include <mc_state_observation/measurements/ContactsDetector.hpp>
 #include <state-observation/dynamics-estimators/kinetics-observer.hpp>
 
 namespace mc_state_observation
@@ -24,11 +25,11 @@ namespace mc_state_observation
 /// @brief Class containing the information of a contact.
 /// @details This class is an enhancement of the ContactWithSensor class with the kinematics of the contact in the
 /// floating base and the kinematics of the frame of the sensor in the frame of the contact surface
-struct KoContactWithSensor : public measurements::ContactWithSensor
+struct KoContactWithSensor : public stateObservation::measurements::Contact
 {
-  using measurements::ContactWithSensor::ContactWithSensor;
+  using stateObservation::measurements::Contact::Contact;
 
-  inline void resetContact() noexcept { ContactWithSensor::resetContact(); }
+  inline void resetContact() noexcept { Contact::resetContact(); }
 
 public:
   // kinematics of the contact frame in the floating base's frame
@@ -77,18 +78,17 @@ protected:
   /// accelerations are set to zero in the control frame. Allows to ease computations performed in the local frame of
   /// the robot.
   /// @param measRobot The control robot. Used to retrieve the measurements.
-  void inputAdditionalWrench(const mc_rbdyn::Robot & inputRobot, const mc_rbdyn::Robot & measRobot);
+  void inputAdditionalWrench(const mc_control::MCController & ctl,
+                             const mc_rbdyn::Robot & inputRobot,
+                             const mc_rbdyn::Robot & measRobot);
 
   /// @brief Adds the measurement of the desired sensors to the external force given as an input to the Kinetics
   /// Observer
   /// @details The force sensors must be given with the list forceSensorsAsInput_
-  /// @param inputRobot A robot whose configuration is the one of real robot, but whose pose, velocities and
-  /// accelerations are set to zero in the control frame. Allows to ease computations performed in the local frame of
-  /// the robot.
   /// @param measRobot The control robot. Used to retrieve the measurements.
   /// @param inputAddtionalForce the external force given as input
   /// @param inputAddtionalTorque the external torque given as input
-  void addSensorsAsInputs(const mc_rbdyn::Robot & inputRobot,
+  void addSensorsAsInputs(const mc_control::MCController & ctl,
                           const mc_rbdyn::Robot & measRobot,
                           stateObservation::Vector3 & inputAddtionalForce,
                           stateObservation::Vector3 & inputAddtionalTorque);
@@ -370,10 +370,10 @@ private:
   stateObservation::Matrix3 contactsPosAverageStateCov_;
 
   // indicates if we want to perform odometry, and if yes, flat or 6d odometry
-  measurements::OdometryType odometryType_;
+  stateObservation::odometry::OdometryType odometryType_;
   // odometry method used on last iteration. Used to check if it changed in order to apply the change to the Tilt
   // Observer if necessary.
-  measurements::OdometryType prevOdometryType_;
+  stateObservation::odometry::OdometryType prevOdometryType_;
   // indicates if we want to estimate the unmodeled wrench within the Kinetics Observer.
   bool withUnmodeledWrench_ = true;
   // indicates if we want to estimate the bias on the gyrometer measurement within the Kinetics Observer.
@@ -433,8 +433,11 @@ private:
   stateObservation::Matrix3 absoluteOriSensorCovariance_;
 
   /* Contacts manager variables */
-  using KoContactsManager = measurements::ContactsManager<KoContactWithSensor>;
+  using KoContactsManager = stateObservation::measurements::ContactsManager<KoContactWithSensor>;
   KoContactsManager contactsManager_;
+
+  using KoContactsDetector = measurements::ContactsDetector<KoContactWithSensor>;
+  KoContactsDetector contactsDetector_;
 
   // list of the force sensors that cannot be used with contacts but we want to use their measurements as inputs to the
   // Kinetics Observer
@@ -442,7 +445,7 @@ private:
 
   /* IMU variables */
   // manager for the IMUs
-  measurements::ImuList listIMUs_;
+  std::vector<stateObservation::measurements::IMU> listIMUs_;
 
   /* Utilitary variables */
   // zero frame transformation

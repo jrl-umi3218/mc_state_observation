@@ -59,7 +59,7 @@ void TiltObserver::reset(const mc_control::MCController & ctl)
 
   my_robots_ = mc_rbdyn::Robots::make();
   my_robots_->robotCopy(robot, robot.name());
-  my_robots_->robotCopy(realRobot, "inputRobot");
+  my_robots_->robotCopy(realRobot, "updatedRobot");
 
   ctl.gui()->addElement(
       {"Robots"}, mc_rtc::gui::Robot(name(), [this]() -> const mc_rbdyn::Robot & { return my_robots_->robot(); }));
@@ -176,9 +176,10 @@ void TiltObserver::updateAnchorFrame(const mc_control::MCController & ctl, const
 
   if(!ctl.datastore().has(anchorFrameFunction_))
   {
-    double leftFootRatio = robot.indirectSurfaceForceSensor("LeftFootCenter").force().z()
-                           / (robot.indirectSurfaceForceSensor("LeftFootCenter").force().z()
-                              + robot.indirectSurfaceForceSensor("RightFootCenter").force().z());
+    double leftFootRatio =
+        robot.indirectSurfaceForceSensor("LeftFootCenter").wrenchWithoutGravity(ctl.realRobot()).force().z()
+        / (robot.indirectSurfaceForceSensor("LeftFootCenter").wrenchWithoutGravity(ctl.realRobot()).force().z()
+           + robot.indirectSurfaceForceSensor("RightFootCenter").wrenchWithoutGravity(ctl.realRobot()).force().z());
 
     X_0_C_ctl_ =
         sva::interpolate(robot.surfacePose("RightFootCenter"), robot.surfacePose("LeftFootCenter"), leftFootRatio);

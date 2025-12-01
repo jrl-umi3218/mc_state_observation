@@ -6,7 +6,6 @@
 
 #include <mc_state_observation/measurements/ContactsDetector.hpp>
 
-#include "mc_state_observation/measurements/measurements.h"
 #include <state-observation/observer/tilt-estimator-humanoid.hpp>
 #include <state-observation/tools/measurements-manager/measurements.hpp>
 #include <state-observation/tools/odometry/legged-odometry-manager.hpp>

@@ -2,7 +2,6 @@
 #include <vector>
 
 #include <mc_control/MCController.h>
-#include <mc_state_observation/measurements/measurements.h>
 #include <state-observation/tools/definitions.hpp>
 
 namespace mc_state_observation::measurements

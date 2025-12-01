@@ -8,7 +8,6 @@
 
 #include <state-observation/observer/waiko-humanoid.hpp>
 #include <state-observation/tools/odometry/legged-odometry-manager.hpp>
-#include <state-observation/tools/rigid-body-kinematics.hpp>
 
 namespace mc_state_observation
 {

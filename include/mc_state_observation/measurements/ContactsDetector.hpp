@@ -10,7 +10,6 @@ namespace mc_state_observation::measurements
 ///////////////////////////////////////////////////////////////////////
 
 template<typename ContactT>
-template<typename OnAddedContact>
 void ContactsDetector<ContactT>::init(const mc_control::MCController & ctl,
                                       const std::string & robotName,
                                       Configuration conf)
@@ -33,7 +32,6 @@ void ContactsDetector<ContactT>::init(const mc_control::MCController & ctl,
 }
 
 template<typename ContactT>
-template<typename OnAddedContact>
 void ContactsDetector<ContactT>::init_manager(const mc_control::MCController & ctl,
                                               const std::string & robotName,
                                               const ContactsDetectorSurfacesConfiguration & conf)
@@ -61,7 +59,6 @@ void ContactsDetector<ContactT>::init_manager(const mc_control::MCController & c
   }
 }
 template<typename ContactT>
-template<typename OnAddedContact>
 void ContactsDetector<ContactT>::init_manager(const mc_control::MCController &,
                                               const std::string &,
                                               const ContactsDetectorSensorsConfiguration &)
@@ -70,7 +67,6 @@ void ContactsDetector<ContactT>::init_manager(const mc_control::MCController &,
 }
 
 template<typename ContactT>
-template<typename OnAddedContact>
 void ContactsDetector<ContactT>::init_manager(const mc_control::MCController &,
                                               const std::string &,
                                               const ContactsDetectorSolverConfiguration &)
@@ -82,6 +78,18 @@ template<typename ContactT>
 std::unordered_set<std::string> & ContactsDetector<ContactT>::updateContacts(const mc_control::MCController & ctl,
                                                                              const std::string & robotName)
 {
+  for(auto it = latestContactList_.begin(); it != latestContactList_.end();)
+  {
+    const std::string & fsName = ctl.robot(robotName).frame(*it).forceSensor().name();
+
+    if(ctl.robot(robotName).forceSensor(fsName).wrenchWithoutGravity(ctl.realRobot(robotName)).force().z()
+       <= schmittTrigger_.lowerThreshold)
+    {
+      it = latestContactList_.erase(it); // returns next iterator
+    }
+    else { ++it; }
+  }
+
   // Detection of the contacts depending on the configured mode
   switch(contactsDetectionMethod_)
   {
@@ -98,6 +106,7 @@ std::unordered_set<std::string> & ContactsDetector<ContactT>::updateContacts(con
       mc_rtc::log::error_and_throw("No contacts detection method was defined.");
       break;
   }
+  return latestContactList_;
 }
 
 template<typename ContactT>
@@ -105,15 +114,6 @@ void ContactsDetector<ContactT>::findContactsFromSolver(const mc_control::MCCont
                                                         const std::string & robotName)
 {
   const auto & measRobot = ctl.robot(robotName);
-
-  auto insert_contact = [&, this](const std::string & surfaceName)
-  {
-    if(measRobot.frame(surfaceName).forceSensor().wrenchWithoutGravity(measRobot).force().norm()
-       > schmittTrigger_.lowerThreshold)
-    {
-      latestContactList_.insert(surfaceName);
-    }
-  };
 
   for(const auto & contact : ctl.solver().contacts())
   {
@@ -123,11 +123,11 @@ void ContactsDetector<ContactT>::findContactsFromSolver(const mc_control::MCCont
     if(r1.name() == measRobot.name())
     {
 
-      if(r2.mb().nrDof() == 0) { insert_contact(contact.r1Surface()->name()); }
+      if(r2.mb().nrDof() == 0) { latestContactList_.insert(contact.r1Surface()->name()); }
     }
     else if(r2.name() == measRobot.name())
     {
-      if(r1.mb().nrDof() == 0) { insert_contact(contact.r2Surface()->name()); }
+      if(r1.mb().nrDof() == 0) { latestContactList_.insert(contact.r2Surface()->name()); }
     }
   }
 }
@@ -137,11 +137,15 @@ void ContactsDetector<ContactT>::findContactsFromSurfaces(const mc_control::MCCo
                                                           const std::string & robotName)
 {
   const auto & robot = ctl.robot(robotName);
+  const auto & realRobot = ctl.realRobot(robotName);
 
   for(auto & surface : surfacesForContactDetection_)
   {
     const std::string & fsName = robot.frame(surface).forceSensor().name();
-    if(robot.forceSensor(fsName).force().norm() > schmittTrigger_.lowerThreshold) { latestContactList_.insert(fsName); }
+    if(robot.forceSensor(fsName).wrenchWithoutGravity(realRobot).force().z() > schmittTrigger_.upperThreshold)
+    {
+      latestContactList_.insert(surface);
+    }
   }
 }
 
@@ -150,10 +154,14 @@ void ContactsDetector<ContactT>::findContactsFromSensors(const mc_control::MCCon
                                                          const std::string & robotName)
 {
   const auto & robot = ctl.robot(robotName);
+  const auto & realRobot = ctl.realRobot(robotName);
 
   for(auto & forceSensor : robot.forceSensors())
   {
-    if(forceSensor.force().norm() > schmittTrigger_.lowerThreshold) { latestContactList_.insert(forceSensor.name()); }
+    if(forceSensor.wrenchWithoutGravity(realRobot).force().z() > schmittTrigger_.upperThreshold)
+    {
+      latestContactList_.insert(forceSensor.name());
+    }
   }
 }
 

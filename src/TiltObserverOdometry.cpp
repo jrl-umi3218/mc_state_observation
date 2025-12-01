@@ -9,7 +9,7 @@ namespace mc_state_observation
 
 namespace so = stateObservation;
 
-using OdometryType = measurements::OdometryType;
+using OdometryType = stateObservation::odometry::OdometryType;
 
 TiltObserverOdometry::TiltObserverOdometry(const std::string & type, double dt, bool asBackup)
 : TiltObserver(type, dt, asBackup), odometryManager_(dt)
@@ -62,7 +62,7 @@ void TiltObserverOdometry::configure(const mc_control::MCController & ctl, const
   contactsDetector_.init(ctl, robot_, contactsConf);
 
   // specific configurations for the use of odometry.
-  if(odometryManager_.odometryType_ != stateObservation::odometry::OdometryType::None)
+  if(odometryManager_.odometryType_ != OdometryType::None)
   {
     bool correctContacts = odomConfig("correctContacts", true);
     if(odomConfig.has("kappa"))
@@ -103,9 +103,6 @@ void TiltObserverOdometry::configure(const mc_control::MCController & ctl, const
 
 void TiltObserverOdometry::reset(const mc_control::MCController & ctl)
 {
-  std::ofstream f("/tmp/timings_waiko.txt", std::ios::out);
-  f.close();
-
   const auto & robot = ctl.robot(robot_);
   const auto & realRobot = ctl.realRobot(robot_);
 
@@ -156,6 +153,7 @@ void TiltObserverOdometry::reset(const mc_control::MCController & ctl)
 bool TiltObserverOdometry::run(const mc_control::MCController & ctl)
 {
   auto & inputRobot = my_robots_->robot("inputRobot");
+  auto & measRobot = ctl.robot(robot_);
   const auto & realRobot = ctl.realRobot(robot_);
   auto & logger = (const_cast<mc_control::MCController &>(ctl)).logger();
 
@@ -183,9 +181,10 @@ bool TiltObserverOdometry::run(const mc_control::MCController & ctl)
 
   updateNecessaryFrames(ctl, inputRobot);
 
-  auto onNewContactOdom = [&inputRobot, &logger, this](stateObservation::odometry::LoContact & newContact)
+  auto onNewContactOdom =
+      [&inputRobot, &measRobot, &logger, this, &ctl](stateObservation::odometry::LoContact & newContact)
   {
-    const std::string & surfaceName = odometryManager_.contactsManager().findContact(newContact.name())->surface();
+    const std::string & surfaceName = newContact.surfaceName();
     const sva::PTransformd & surfaceXbs = inputRobot.surface(surfaceName).X_b_s();
     so::kine::Kinematics parentSurfaceKine = conversions::kinematics::fromSva(
         surfaceXbs, so::kine::Kinematics::Flags::pose | so::kine::Kinematics::Flags::vel);
@@ -198,36 +197,39 @@ bool TiltObserverOdometry::run(const mc_control::MCController & ctl)
 
     newContact.bodyContactKine_ = worldImuKine_.getInverse() * worldContactKine;
 
-    newContact.lambda(inputRobot.forceSensor(newContact.surface()).force().norm());
+    newContact.lambda(
+        measRobot.forceSensor(newContact.forceSensor()).wrenchWithoutGravity(ctl.realRobot()).force().norm());
 
-    conversions::kinematics::addToLogger(logger, newContact.worldRefKine_,
-                                         "Waiko_contacts_" + newContact.name() + "_refPose");
-    // conversions::kinematics::addToLogger(logger, newContact.worldBodyKineFromRef_,
-    //                                      "Waiko_contacts_" + newContact.name() + "_worldImuKineFromRef");
-    // conversions::kinematics::addToLogger(logger, newContact.currentWorldKine_,
-    //                                      "Waiko_contacts_" + newContact.name() + "_currentWorldContactKine");
-    // conversions::kinematics::addToLogger(logger, newContact.bodyContactKine_,
-    //                                      "Waiko_contacts_" + newContact.name() + "_bodyContactKine_");
-    // conversions::kinematics::addToLogger(logger, newContact.worldRefKineBeforeCorrection_,
-    //                                      "Waiko_contacts_" + newContact.name() + "_refPoseBeforeCorrection");
-    // conversions::kinematics::addToLogger(logger, newContact.newIncomingWorldRefKine_,
-    //                                      "Waiko_contacts_" + newContact.name() + "_newIncomingWorldRefKine");
+    if(withDebugLogs_)
+    {
+      conversions::kinematics::addToLogger(logger, newContact.worldRefKine_,
+                                           "Waiko_contacts_" + newContact.surfaceName() + "_refPose");
+      conversions::kinematics::addToLogger(logger, newContact.worldBodyKineFromRef_,
+                                           "Waiko_contacts_" + newContact.surfaceName() + "_worldImuKineFromRef");
+      conversions::kinematics::addToLogger(logger, newContact.currentWorldKine_,
+                                           "Waiko_contacts_" + newContact.surfaceName() + "_currentWorldContactKine");
+      conversions::kinematics::addToLogger(logger, newContact.bodyContactKine_,
+                                           "Waiko_contacts_" + newContact.surfaceName() + "_bodyContactKine_");
+      conversions::kinematics::addToLogger(logger, newContact.worldRefKineBeforeCorrection_,
+                                           "Waiko_contacts_" + newContact.surfaceName() + "_refPoseBeforeCorrection");
+      conversions::kinematics::addToLogger(logger, newContact.newIncomingWorldRefKine_,
+                                           "Waiko_contacts_" + newContact.surfaceName() + "_newIncomingWorldRefKine");
 
-    logger.addLogEntry("Waiko_contacts_" + newContact.name() + "_isSet", &newContact,
-                       [&newContact]() -> std::string { return newContact.isSet() ? "Set" : "notSet"; });
-
-    // logger.addLogEntry("Waiko_contacts_" + newContact.name() + "_lambda", &newContact,
-    //                    [&newContact]() -> double { return newContact.lambda(); });
-    // logger.addLogEntry("Waiko_contacts_" + newContact.name() + "_lifeTime", &newContact,
-    //                    [&newContact]() -> double { return newContact.lifeTime(); });
-    // logger.addLogEntry("Waiko_contacts_" + newContact.name() + "_correctionWeightingCoeff", &newContact,
-    //                    [&newContact]() -> double { return newContact.correctionWeightingCoeff(); });
+      logger.addLogEntry("Waiko_contacts_" + newContact.surfaceName() + "_isSet", &newContact,
+                         [&newContact]() -> std::string { return newContact.isSet() ? "Set" : "notSet"; });
+      logger.addLogEntry("Waiko_contacts_" + newContact.surfaceName() + "_lambda", &newContact,
+                         [&newContact]() -> double { return newContact.lambda(); });
+      logger.addLogEntry("Waiko_contacts_" + newContact.surfaceName() + "_lifeTime", &newContact,
+                         [&newContact]() -> double { return newContact.lifeTime(); });
+      logger.addLogEntry("Waiko_contacts_" + newContact.surfaceName() + "_correctionWeightingCoeff", &newContact,
+                         [&newContact]() -> double { return newContact.correctionWeightingCoeff(); });
+    }
   };
 
-  auto onMaintainedContactOdom = [&inputRobot, this, &ctl](stateObservation::odometry::LoContact & maintainedContact)
+  auto onMaintainedContactOdom =
+      [&inputRobot, &measRobot, this, &ctl](stateObservation::odometry::LoContact & maintainedContact)
   {
-    const std::string & surfaceName =
-        odometryManager_.contactsManager().findContact(maintainedContact.name())->surface();
+    const std::string & surfaceName = maintainedContact.surfaceName();
     const sva::PTransformd & surfaceXbs = inputRobot.surface(surfaceName).X_b_s();
     so::kine::Kinematics parentSurfaceKine = conversions::kinematics::fromSva(
         surfaceXbs, so::kine::Kinematics::Flags::pose | so::kine::Kinematics::Flags::vel);
@@ -239,7 +241,8 @@ bool TiltObserverOdometry::run(const mc_control::MCController & ctl)
     stateObservation::kine::Kinematics worldContactKine = worldParentKine * parentSurfaceKine;
 
     maintainedContact.bodyContactKine_ = worldImuKine_.getInverse() * worldContactKine;
-    const stateObservation::Vector3 & forceMeas = inputRobot.forceSensor(maintainedContact.surface()).force();
+    const stateObservation::Vector3 & forceMeas =
+        measRobot.forceSensor(maintainedContact.forceSensor()).wrenchWithoutGravity(ctl.realRobot()).force();
     double forceRatio =
         forceMeas.z()
         / (forceMeas.head(2).norm() + 1e-6 * ctl.realRobot().mass() * stateObservation::cst::gravityConstant);
@@ -275,7 +278,7 @@ bool TiltObserverOdometry::run(const mc_control::MCController & ctl)
   stateObservation::kine::Kinematics imuWorldKine = worldImuKine_.getInverse();
   worldAnchorKine_ = odometryManager_.getAnchorKineIn(imuWorldKine);
 
-  const auto & imu = ctl.robot(robot_).bodySensor(imuSensor_);
+  const auto & imu = measRobot.bodySensor(imuSensor_);
 
   auto k = estimator_.getCurrentTime();
 
@@ -398,10 +401,9 @@ void TiltObserverOdometry::update(mc_rbdyn::Robot & robot)
   robot.velW(velW_);
 }
 
-void TiltObserverOdometry::setOdometryType(stateObservation::odometry::OdometryType newOdometryType)
+void TiltObserverOdometry::setOdometryType(OdometryType newOdometryType)
 {
-  if((newOdometryType != stateObservation::odometry::OdometryType::Odometry6d)
-     && (newOdometryType != stateObservation::odometry::OdometryType::Flat))
+  if((newOdometryType != OdometryType::Odometry6d) && (newOdometryType != OdometryType::Flat))
   {
     mc_rtc::log::error_and_throw<std::runtime_error>("Please choose between these two odometry types: [6D, Flat]");
   }
@@ -480,7 +482,7 @@ void TiltObserverOdometry::addToLogger(const mc_control::MCController & ctl,
     logger.addLogEntry(category + "_constants_gains_gamma", [this]() -> double { return gamma_; });
 
     logger.addLogEntry(category + "_debug_OdometryType", [this]() -> std::string
-                       { return stateObservation::odometry::odometryTypeToSstring(odometryManager_.odometryType_); });
+                       { return stateObservation::odometry::odometryTypeToString(odometryManager_.odometryType_); });
 
     logger.addLogEntry(category + "_debug_yv", [this]() -> const so::Vector3 & { return yv_; });
 
@@ -653,20 +655,13 @@ void TiltObserverOdometry::addToLogger(const mc_control::MCController & ctl,
   }
 }
 
-void TiltObserverOdometry::removeFromLogger(mc_rtc::Logger & logger, const std::string & category)
-{
-  logger.removeLogEntry(category + "_imuVelC");
-  logger.removeLogEntry(category + "_imuPoseC");
-  logger.removeLogEntry(category + "_imuEstRotW");
-  logger.removeLogEntry(category + "_controlAnchorFrame");
-}
+void TiltObserverOdometry::removeFromLogger(mc_rtc::Logger &, const std::string &) {}
 
 void TiltObserverOdometry::addToGUI(const mc_control::MCController &,
                                     mc_rtc::gui::StateBuilder &,
                                     const std::vector<std::string> &)
 {
   using namespace mc_state_observation::gui;
-  // gui.addElement(category, make_input_element("alpha", alpha_), make_input_element("beta", beta_));
 }
 
 } // namespace mc_state_observation

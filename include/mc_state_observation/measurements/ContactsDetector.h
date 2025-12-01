@@ -65,9 +65,6 @@ public:
   /// @param ctl Controller
   /// @param robotName Name of the robot
   /// @param conf Configutation of the manager
-  /// @param onAddedContact function to call when a contact is added to the
-  /// manager
-  template<typename OnAddedContact = std::nullptr_t>
   void init(const mc_control::MCController & ctl, const std::string & robotName, Configuration conf);
 
   /// @brief Updates the list of contacts
@@ -106,16 +103,12 @@ private:
   /// @brief Initializer for a contacts detection based on contact surfaces
   /// @param ctl The controller
   /// @param robotName Name of the robot
-  /// @param conf Configuration of the contacts manager
-  template<typename OnAddedContact = std::nullptr_t>
   inline void init_manager(const mc_control::MCController & ctl,
                            const std::string & robotName,
                            const ContactsDetectorSurfacesConfiguration & conf);
   /// @brief Initializer for a contacts detection based on force sensors
   /// @param ctl The controller
   /// @param robotName Name of the robot
-  /// @param conf Configuration of the contacts manager
-  template<typename OnAddedContact = std::nullptr_t>
   inline void init_manager(const mc_control::MCController & ctl,
                            const std::string & robotName,
                            const ContactsDetectorSensorsConfiguration & conf);
@@ -123,8 +116,6 @@ private:
   /// contacts
   /// @param ctl The controller
   /// @param robotName Name of the robot
-  /// @param conf Configuration of the contacts manager
-  template<typename OnAddedContact = std::nullptr_t>
   inline void init_manager(const mc_control::MCController & ctl,
                            const std::string & robotName,
                            const ContactsDetectorSolverConfiguration & conf);

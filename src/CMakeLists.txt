@@ -1,9 +1,16 @@
-set(mc_state_observation_SRC conversions/kinematics.cpp
-                             odometry/LeggedOdometryManager.cpp)
+# set(mc_state_observation_SRC conversions/kinematics.cpp
+#                              odometry/LeggedOdometryManager.cpp)
+# set(mc_state_observation_HDR
+#     ${CMAKE_SOURCE_DIR}/include/mc_state_observation/conversions/kinematics.h
+#     ${CMAKE_SOURCE_DIR}/include/mc_state_observation/odometry/LeggedOdometryManager.h
+# )
+
+set(mc_state_observation_SRC conversions/kinematics.cpp)
+
 set(mc_state_observation_HDR
-    ${CMAKE_SOURCE_DIR}/include/mc_state_observation/conversions/kinematics.h
-    ${CMAKE_SOURCE_DIR}/include/mc_state_observation/odometry/LeggedOdometryManager.h
+    ${CMAKE_SOURCE_DIR}/include/mc_state_observation/conversions/kinematics.h 
 )
+
 add_library(mc_state_observation SHARED ${mc_state_observation_SRC}
                                         ${mc_state_observation_HDR})
 
@@ -60,7 +67,7 @@ add_so_observer(TiltObserver)
 # add_so_observer(MCViking)
 # add_so_observer(MocapVisualizer)
 
-# add_kineticsobserver()
+add_kineticsobserver()
 
 if(WITH_ROS_OBSERVERS)
   add_simple_observer(MocapObserver)
