@@ -385,17 +385,6 @@ private:
   /// @param contactName
   void removeContactLogEntries(mc_rtc::Logger & logger, const LoContactWithSensor & contact);
 
-public:
-  // Indicates if the mode of computation of the anchor frame changed. Might me needed by the estimator (ex;
-  // TiltObserver)
-  bool prevAnchorFromContacts_ = true;
-  // Indicates if the desired odometry must be a flat or a 6D odometry.
-  using OdometryType = measurements::OdometryType;
-  measurements::OdometryType odometryType_;
-
-  // indicates if the velocity has to be updated, if yes, how it must be updated
-  VelocityUpdate velocityUpdate_;
-
 protected:
   // Name of the odometry, used in logs and in the gui.
   std::string odometryName_;
@@ -413,6 +402,22 @@ protected:
   std::shared_ptr<mc_rbdyn::Robots> odometryRobot_;
   // pose of the anchor frame of the robot in the world
   stateObservation::kine::Kinematics worldAnchorPose_;
+
+  // Indicates if the previous anchor frame was obtained using contacts
+  bool prevAnchorFromContacts_ = true;
+  // Indicates if the current anchor frame was obtained using contacts
+  bool currAnchorFromContacts_ = true;
+  // Indicates if the mode of computation of the anchor frame changed. Might me needed by the estimator (ex:
+
+public:
+  // TiltObserver)
+  bool anchorFrameMethodChanged_ = false;
+  // Indicates if the desired odometry must be a flat or a 6D odometry.
+  using OdometryType = measurements::OdometryType;
+  measurements::OdometryType odometryType_;
+
+  // indicates if the velocity has to be updated, if yes, how it must be updated
+  VelocityUpdate velocityUpdate_;
 };
 
 } // namespace mc_state_observation::odometry

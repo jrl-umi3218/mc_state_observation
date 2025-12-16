@@ -25,8 +25,21 @@ endmacro()
 
 macro(add_so_observer observer_name)
   add_simple_observer(${observer_name})
-  target_link_libraries(${observer_name}
-                        PUBLIC state-observation::state-observation)
+  target_link_libraries(
+    ${observer_name} PUBLIC state-observation::state-observation
+                            mc_state_observation)
+endmacro()
+
+macro(add_kineticsobserver)
+  add_observer(
+    MCKineticsObserver "MCKineticsObserver.cpp"
+    "${CMAKE_SOURCE_DIR}/include/${PROJECT_NAME}/MCKineticsObserver.h")
+  # mc_observers doesn't actually depend on mc_control, but the observer's
+  # implementation does
+  target_link_libraries(
+    MCKineticsObserver
+    PUBLIC mc_rtc::mc_control state-observation::state-observation
+           mc_state_observation TiltObserver)
 endmacro()
 
 macro(add_observer_with_filter observer_name)
@@ -39,6 +52,9 @@ macro(add_observer_with_filter observer_name)
 endmacro()
 
 add_so_observer(AttitudeObserver)
+add_so_observer(NaiveOdometry)
+add_so_observer(TiltObserver)
+add_kineticsobserver()
 
 if(WITH_ROS_OBSERVERS)
   add_simple_observer(MocapObserver)
