@@ -39,6 +39,7 @@ macro(add_observer_with_filter observer_name)
 endmacro()
 
 add_so_observer(AttitudeObserver)
+add_simple_observer(PressureForceSensorObserver)
 
 if(WITH_ROS_OBSERVERS)
   add_simple_observer(MocapObserver)
