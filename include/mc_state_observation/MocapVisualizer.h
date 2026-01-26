@@ -7,8 +7,6 @@
 
 #include <state-observation/tools/rigid-body-kinematics.hpp>
 
-#include <mc_state_observation/measurements/ContactsManager.h>
-
 #include <mc_observers/Observer.h>
 
 namespace mc_state_observation
@@ -20,14 +18,14 @@ namespace mc_state_observation
  *    Yacine Chitour. IEEE-RAS Humanoids 2017. <hal-01499167>
  *
  */
-class MocapContact : public measurements::ContactWithSensor
-{
-  using measurements::ContactWithSensor::ContactWithSensor;
+// class MocapContact : public measurements::ContactWithSensor
+// {
+//   using measurements::ContactWithSensor::ContactWithSensor;
 
-public:
-  // pose of the contact in the world
-  stateObservation::kine::Kinematics worldKine_;
-};
+// public:
+//   // pose of the contact in the world
+//   stateObservation::kine::Kinematics worldKine_;
+// };
 
 struct MocapVisualizer : public mc_observers::Observer
 {
@@ -69,10 +67,10 @@ protected:
                 const std::vector<std::string> & /* category */) override;
 
   void updateContacts(const mc_control::MCController & ctl);
-  const stateObservation::kine::Kinematics & getContactKinematics(MocapContact & contact,
-                                                                  const mc_rbdyn::ForceSensor & fs);
+  // const stateObservation::kine::Kinematics & getContactKinematics(MocapContact & contact,
+  //                                                                 const mc_rbdyn::ForceSensor & fs);
 
-  void addContactsLogs(MocapContact & contact, mc_rtc::Logger & logger);
+  // void addContactsLogs(MocapContact & contact, mc_rtc::Logger & logger);
 
 protected:
   /**
@@ -118,7 +116,7 @@ private:
   bool overlappingDatas_;
   std::unordered_map<int, int> overlapTime_;
 
-  measurements::ContactsManager<MocapContact> contactsManager_;
+  // measurements::ContactsManager<MocapContact> contactsManager_;
 };
 
 } // namespace mc_state_observation

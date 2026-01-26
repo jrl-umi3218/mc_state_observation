@@ -35,7 +35,8 @@ endfunction()
 
 testobserver(Attitude 100)
 testobserver(MCKineticsObserver 100)
-testobserver(NaiveOdometry 100)
+# testobserver(NaiveOdometry 100)
+testobserver(MCValinor 100)
 testobserver(Tilt 100)
 
 if(WITH_ROS_OBSERVERS)

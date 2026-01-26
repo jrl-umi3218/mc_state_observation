@@ -4,10 +4,12 @@
 
 #include <boost/circular_buffer.hpp>
 
-#include "mc_state_observation/TiltObserver.h"
-#include "mc_state_observation/measurements/ContactsDetector.h"
+#include <mc_state_observation/MCValinor.h>
+#include <mc_state_observation/measurements/ContactsDetector.h>
 #include <mc_state_observation/measurements/ContactsDetector.hpp>
 #include <state-observation/dynamics-estimators/kinetics-observer.hpp>
+#include <state-observation/tools/measurements-manager/IMU.hpp>
+#include <string_view>
 
 namespace mc_state_observation
 {
@@ -18,8 +20,8 @@ namespace mc_state_observation
  *The inputs are obtained from a robot called the inputRobot. Its configuration is the one of real robot, but
  *its floating base's frame is superimposed with the world frame. This allows to ease computations performed in the
  *local frame of the robot.
- *The Kinetics Observer is associated to the Tilt Observer as a backup. If an anomaly is detected, the Kinetics Observer
- *will recover the last ellapsed second (or less) using the displacement made by the Tilt Observer.
+ *The Kinetics Observer is associated to Valinor as a backup. If an anomaly is detected, the Kinetics Observer
+ *will recover the last ellapsed second (or less) using the displacement made by Valinor.
  **/
 
 /// @brief Class containing the information of a contact.
@@ -28,6 +30,10 @@ namespace mc_state_observation
 struct KoContactWithSensor : public stateObservation::measurements::Contact
 {
   using stateObservation::measurements::Contact::Contact;
+
+  inline const std::string & fsName() const noexcept { return fsName_; }
+
+  inline void fsName(const std::string_view & fsName) { fsName_ = fsName; }
 
   inline void resetContact() noexcept { Contact::resetContact(); }
 
@@ -42,6 +48,7 @@ public:
   Eigen::Matrix<double, 6, 1> wrenchInCentroid_ = Eigen::Matrix<double, 6, 1>::Zero();
   // for debug only
   stateObservation::Vector6 viscoElasticWrenchAfterCorrection_;
+  std::string fsName_;
 
   // the sensor measurement has to be used by the observer
   bool sensorEnabled_ = true;
@@ -314,7 +321,7 @@ private:
   // instance of the Kinetics Observer
   stateObservation::KineticsObserver observer_;
   // instance of the Tilt Observer used as a backup
-  TiltObserver tiltObserver_;
+  MCValinor valinor_;
 
   enum EstimationState
   {
@@ -468,7 +475,7 @@ private:
   int lastBackupIter_;
   // number of iterations on which we perform the backup
   int fbBackupCapacity_ = 0;
-  // time during which the Kinetics Observer is still getting updated by the Tilt Observer after the need of a backup,
+  // time during which the Kinetics Observer is still getting updated by Valinor after the need of a backup,
   // so the Kalman Filter has time to converge again
   int invincibilityFrame_ = 0;
   // iterations ellapsed within the invincibility frame

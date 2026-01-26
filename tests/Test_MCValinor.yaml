@@ -1,13 +1,11 @@
-ObserverModulePaths: ["$<TARGET_FILE_DIR:TiltObserver>"]
+ObserverModulePaths: ["$<TARGET_FILE_DIR:MCValinor>"]
 ObserverPipelines:
   name: MainObserverPipeline
   gui: false
   observers:
-    - type: NaiveOdometry
+    - type: Valinor
       update: true
       config:
         odometryType: 6D
-        velUpdatedUpstream: false
-        accUpdatedUpstream: false
         contactsDetection: Surfaces
         surfacesForContactDetection: [RightFootCenter, LeftFootCenter]

@@ -1,6 +1,7 @@
 #include <mc_observers/ObserverMacros.h>
+#include <mc_rbdyn/ForceSensor.h>
 
-#include <mc_state_observation/TiltObserverOdometry.h>
+#include <mc_state_observation/MCValinor.h>
 #include <mc_state_observation/conversions/kinematics.h>
 #include <mc_state_observation/gui_helpers.h>
 
@@ -11,13 +12,12 @@ namespace so = stateObservation;
 
 using OdometryType = stateObservation::odometry::OdometryType;
 
-TiltObserverOdometry::TiltObserverOdometry(const std::string & type, double dt, bool asBackup)
-: TiltObserver(type, dt, asBackup), odometryManager_(dt)
+MCValinor::MCValinor(const std::string & type, double dt, bool asBackup)
+: TiltObserver(type, dt), odometryManager_(dt), asBackup_(asBackup)
 {
-  asBackup_ = asBackup;
 }
 
-void TiltObserverOdometry::configure(const mc_control::MCController & ctl, const mc_rtc::Configuration & config)
+void MCValinor::configure(const mc_control::MCController & ctl, const mc_rtc::Configuration & config)
 {
   robot_ = config("robot", ctl.robot().name());
   imuSensor_ = config("imuSensor", ctl.robot().bodySensor().name());
@@ -101,7 +101,7 @@ void TiltObserverOdometry::configure(const mc_control::MCController & ctl, const
   }
 }
 
-void TiltObserverOdometry::reset(const mc_control::MCController & ctl)
+void MCValinor::reset(const mc_control::MCController & ctl)
 {
   const auto & robot = ctl.robot(robot_);
   const auto & realRobot = ctl.realRobot(robot_);
@@ -143,14 +143,14 @@ void TiltObserverOdometry::reset(const mc_control::MCController & ctl)
   stateObservation::kine::Kinematics initKine =
       conversions::kinematics::fromSva(ctl.realRobot().posW(), stateObservation::kine::Kinematics::Flags::pose);
 
-  odometryManager_.replaceRobotPose(initKine.toVector(stateObservation::kine::Kinematics::Flags::pose));
+  odometryManager_.replaceOdomBodyPose(initWorldImuKine.toVector(stateObservation::kine::Kinematics::Flags::pose));
 
   estimator_.setAlpha(alpha_);
   estimator_.setBeta(beta_);
   estimator_.setGamma(gamma_);
 }
 
-bool TiltObserverOdometry::run(const mc_control::MCController & ctl)
+bool MCValinor::run(const mc_control::MCController & ctl)
 {
   auto & inputRobot = my_robots_->robot("inputRobot");
   auto & measRobot = ctl.robot(robot_);
@@ -197,8 +197,8 @@ bool TiltObserverOdometry::run(const mc_control::MCController & ctl)
 
     newContact.bodyContactKine_ = worldImuKine_.getInverse() * worldContactKine;
 
-    newContact.lambda(
-        measRobot.forceSensor(newContact.forceSensor()).wrenchWithoutGravity(ctl.realRobot()).force().norm());
+    const mc_rbdyn::ForceSensor & fs = measRobot.indirectSurfaceForceSensor(newContact.surfaceName());
+    newContact.lambda(fs.wrenchWithoutGravity(ctl.realRobot()).force().norm());
 
     if(withDebugLogs_)
     {
@@ -241,8 +241,8 @@ bool TiltObserverOdometry::run(const mc_control::MCController & ctl)
     stateObservation::kine::Kinematics worldContactKine = worldParentKine * parentSurfaceKine;
 
     maintainedContact.bodyContactKine_ = worldImuKine_.getInverse() * worldContactKine;
-    const stateObservation::Vector3 & forceMeas =
-        measRobot.forceSensor(maintainedContact.forceSensor()).wrenchWithoutGravity(ctl.realRobot()).force();
+    const mc_rbdyn::ForceSensor & fs = measRobot.indirectSurfaceForceSensor(maintainedContact.surfaceName());
+    const stateObservation::Vector3 & forceMeas = fs.wrenchWithoutGravity(ctl.realRobot()).force();
     double forceRatio =
         forceMeas.z()
         / (forceMeas.head(2).norm() + 1e-6 * ctl.realRobot().mass() * stateObservation::cst::gravityConstant);
@@ -314,7 +314,7 @@ bool TiltObserverOdometry::run(const mc_control::MCController & ctl)
   estimator_.getEstimatedState(k + 1);
 
   odometryManager_.run(stateObservation::odometry::LeggedOdometryManager::KineParams(estimatedWorldImuKine_)
-                           .tiltMeas(estimatedWorldImuKine_.orientation.toMatrix3()));
+                           .tiltMeasurement(estimator_.getEstimatedTilt()));
 
   estimatedWorldImuKine_.linVel = estimatedWorldImuKine_.orientation.toMatrix3() * estimator_.getEstimatedLocLinVel();
   estimatedWorldImuKine_.angVel = estimatedWorldImuKine_.orientation.toMatrix3() * imu.angularVelocity();
@@ -324,7 +324,7 @@ bool TiltObserverOdometry::run(const mc_control::MCController & ctl)
   /* Backups */
 
   // for the Kinetics Observer
-  backupFbKinematics_.push_back(conversions::kinematics::fromSva(poseW_, so::kine::Kinematics::Flags::pose));
+  if(asBackup_) { backupFbKinematics_.push_back(correctedWorldFbKine_); }
 
   iter_++;
 
@@ -335,8 +335,61 @@ bool TiltObserverOdometry::run(const mc_control::MCController & ctl)
   return true;
 }
 
-void TiltObserverOdometry::updateNecessaryFrames(const mc_control::MCController & ctl,
-                                                 const mc_rbdyn::Robot & odomRobot)
+const so::kine::Kinematics MCValinor::backupFb(boost::circular_buffer<so::kine::Kinematics> * koBackupFbKinematics)
+{
+  // new initial pose of the floating base
+  so::kine::Kinematics worldResetKine = *(koBackupFbKinematics->begin());
+
+  // original initial pose of the floating base
+  so::kine::Kinematics worldFbInitBackup = backupFbKinematics_.front();
+
+  so::kine::Kinematics fbWorldInitBackup = worldFbInitBackup.getInverse();
+
+  // we apply the transformation from the initial pose to the intermediates pose estimated by the tilt estimator to the
+  // new starting pose of the Kinetics Observer
+  for(int i = 0; i < koBackupFbKinematics->size(); i++)
+  {
+    // Intermediary pose of the floating base estimated by the tilt estimator
+    so::kine::Kinematics worldFbIntermBackup = backupFbKinematics_.at(i);
+
+    // transformation between the initial and the intermediary pose during the backup interval
+    so::kine::Kinematics initInterm = fbWorldInitBackup * worldFbIntermBackup;
+
+    koBackupFbKinematics->at(i) = worldResetKine * initInterm;
+  }
+
+  so::Vector3 tiltLocalLinVel = poseW_.rotation() * velW_.linear();
+  so::Vector3 tiltLocalAngVel = poseW_.rotation() * velW_.angular();
+
+  // koBackupFbKinematics->back() is the new last pose of the kinetics observer
+  koBackupFbKinematics->back().linVel = koBackupFbKinematics->back().orientation.toMatrix3() * tiltLocalLinVel;
+  koBackupFbKinematics->back().angVel = koBackupFbKinematics->back().orientation.toMatrix3() * tiltLocalAngVel;
+
+  return koBackupFbKinematics->back();
+}
+
+so::kine::Kinematics MCValinor::applyLastTransformation(const so::kine::Kinematics & previousKine)
+{
+  so::kine::Kinematics worldFbPreviousBackup = backupFbKinematics_.at(backupFbKinematics_.size() - 2);
+
+  so::kine::Kinematics fbWorldPreviousBackup = worldFbPreviousBackup.getInverse();
+  so::kine::Kinematics worldFbFinalBackup = backupFbKinematics_.back();
+
+  so::kine::Kinematics lastTransformation = fbWorldPreviousBackup * worldFbFinalBackup;
+
+  so::kine::Kinematics newKine = previousKine * lastTransformation;
+
+  so::Vector3 tiltLocalLinVel = poseW_.rotation() * velW_.linear();
+  so::Vector3 tiltLocalAngVel = poseW_.rotation() * velW_.angular();
+
+  // koBackupFbKinematics->back() is the new last pose of the kinetics observer
+  newKine.linVel = newKine.orientation.toMatrix3() * tiltLocalLinVel;
+  newKine.angVel = newKine.orientation.toMatrix3() * tiltLocalAngVel;
+
+  return newKine;
+}
+
+void MCValinor::updateNecessaryFrames(const mc_control::MCController & ctl, const mc_rbdyn::Robot & odomRobot)
 
 {
   // pose of the floating base' frame in the world for the odometry robot
@@ -362,7 +415,7 @@ void TiltObserverOdometry::updateNecessaryFrames(const mc_control::MCController 
   fbImuKine_ = worldFbKine_.getInverse() * worldImuKine_;
 }
 
-void TiltObserverOdometry::updatePoseAndVel()
+void MCValinor::updatePoseAndVel()
 {
   estimatedWorldFbKine_ = estimatedWorldImuKine_ * fbImuKine_.getInverse();
 
@@ -373,7 +426,7 @@ void TiltObserverOdometry::updatePoseAndVel()
   velW_.angular() = estimatedWorldFbKine_.angVel();
 }
 
-void TiltObserverOdometry::update(mc_control::MCController & ctl)
+void MCValinor::update(mc_control::MCController & ctl)
 {
   auto & realRobot = ctl.realRobot(robot_);
   if(updateRobot_)
@@ -395,13 +448,13 @@ void TiltObserverOdometry::update(mc_control::MCController & ctl)
   }
 }
 
-void TiltObserverOdometry::update(mc_rbdyn::Robot & robot)
+void MCValinor::update(mc_rbdyn::Robot & robot)
 {
   robot.posW(poseW_);
   robot.velW(velW_);
 }
 
-void TiltObserverOdometry::setOdometryType(OdometryType newOdometryType)
+void MCValinor::setOdometryType(OdometryType newOdometryType)
 {
   if((newOdometryType != OdometryType::Odometry6d) && (newOdometryType != OdometryType::Flat))
   {
@@ -411,9 +464,7 @@ void TiltObserverOdometry::setOdometryType(OdometryType newOdometryType)
   odometryManager_.setOdometryType(newOdometryType);
 }
 
-void TiltObserverOdometry::addToLogger(const mc_control::MCController & ctl,
-                                       mc_rtc::Logger & logger,
-                                       const std::string & category)
+void MCValinor::addToLogger(const mc_control::MCController & ctl, mc_rtc::Logger & logger, const std::string & category)
 {
   category_ = category;
 
@@ -655,14 +706,14 @@ void TiltObserverOdometry::addToLogger(const mc_control::MCController & ctl,
   }
 }
 
-void TiltObserverOdometry::removeFromLogger(mc_rtc::Logger &, const std::string &) {}
+void MCValinor::removeFromLogger(mc_rtc::Logger &, const std::string &) {}
 
-void TiltObserverOdometry::addToGUI(const mc_control::MCController &,
-                                    mc_rtc::gui::StateBuilder &,
-                                    const std::vector<std::string> &)
+void MCValinor::addToGUI(const mc_control::MCController &,
+                         mc_rtc::gui::StateBuilder &,
+                         const std::vector<std::string> &)
 {
   using namespace mc_state_observation::gui;
 }
 
 } // namespace mc_state_observation
-EXPORT_OBSERVER_MODULE("Valinor", mc_state_observation::TiltObserverOdometry)
+EXPORT_OBSERVER_MODULE("MCValinor", mc_state_observation::MCValinor)

@@ -146,10 +146,7 @@ void MCWaiko::reset(const mc_control::MCController & ctl)
   anchorFrameJumped_ = false;
   iter_ = 0;
 
-  stateObservation::kine::Kinematics initKine =
-      conversions::kinematics::fromSva(ctl.realRobot().posW(), stateObservation::kine::Kinematics::Flags::pose);
-
-  odometryManager_.replaceRobotPose(initKine.toVector(stateObservation::kine::Kinematics::Flags::pose));
+  odometryManager_.replaceOdomBodyPose(initWorldImuKine.toVector(stateObservation::kine::Kinematics::Flags::pose));
 
   estimator_.setAlpha(alpha_);
   estimator_.setBeta(beta_);
@@ -198,10 +195,6 @@ bool MCWaiko::run(const mc_control::MCController & ctl)
       mc_rtc::log::warning(
           "The surface given for the contact detection is not associated to a force sensor, it will be ignored.");
     }
-
-    // we get the name of the force sensor associated to the surface
-    const std::string & fsName = measRobot.frame(addedContact.surfaceName()).forceSensor().name();
-    addedContact.forceSensor(fsName);
   };
 
   auto onNewContactOdom =
@@ -220,8 +213,10 @@ bool MCWaiko::run(const mc_control::MCController & ctl)
 
     newContact.bodyContactKine_ = worldImuKine_.getInverse() * worldContactKine;
 
-    newContact.lambda(
-        measRobot.forceSensor(newContact.forceSensor()).wrenchWithoutGravity(ctl.realRobot(robot_)).force().norm());
+    newContact.lambda(measRobot.indirectSurfaceForceSensor(newContact.surfaceName())
+                          .wrenchWithoutGravity(ctl.realRobot(robot_))
+                          .force()
+                          .norm());
 
     if(withDebugLogs_)
     {
@@ -266,7 +261,7 @@ bool MCWaiko::run(const mc_control::MCController & ctl)
 
     maintainedContact.bodyContactKine_ = worldImuKine_.getInverse() * worldContactKine;
     const stateObservation::Vector3 & forceMeas =
-        measRobot.forceSensor(maintainedContact.forceSensor()).wrenchWithoutGravity(realRobot).force();
+        measRobot.indirectSurfaceForceSensor(maintainedContact.surfaceName()).wrenchWithoutGravity(realRobot).force();
     double forceRatio =
         forceMeas.z() / (forceMeas.head(2).norm() + 1e-6 * realRobot.mass() * stateObservation::cst::gravityConstant);
 
@@ -359,7 +354,7 @@ bool MCWaiko::run(const mc_control::MCController & ctl)
   estimatedWorldImuKine_ = estimatedWorldImuLocKine;
 
   odometryManager_.run(stateObservation::odometry::LeggedOdometryManager::KineParams(estimatedWorldImuKine_)
-                           .attitudeMeas(estimatedWorldImuKine_.orientation.toMatrix3())
+                           .attitudeMeasurement(estimatedWorldImuKine_.orientation.toMatrix3())
                            .positionMeas(estimatedWorldImuKine_.position()));
   updatePoseAndVel();
 

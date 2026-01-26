@@ -31,53 +31,56 @@ void MocapVisualizer::configure(const mc_control::MCController & ctl, const mc_r
     csvPath_ = "/home/arnaud/devel/src/data_manipulation_tools/Projects/" + projectName
                + "/output_data/resultMocapLimbData.csv";
 
-    using ContactsManager = measurements::ContactsManager<MocapContact>;
+    // using ContactsManager = measurements::ContactsManager<MocapContact>;
 
-    std::string contactsDetectionString = static_cast<std::string>(config("contactsDetection"));
-    ContactsManager::ContactsDetection contactsDetectionMethod =
-        contactsManager_.stringToContactsDetection(contactsDetectionString, name());
+    // std::string contactsDetectionString = static_cast<std::string>(config("contactsDetection"));
+    // ContactsManager::ContactsDetection contactsDetectionMethod =
+    //     contactsManager_.stringToContactsDetection(contactsDetectionString, name());
 
-    if(contactsDetectionMethod == ContactsManager::ContactsDetection::Surfaces)
-    {
-      std::vector<std::string> surfacesForContactDetection =
-          config("surfacesForContactDetection", std::vector<std::string>());
+    // if(contactsDetectionMethod == ContactsManager::ContactsDetection::Surfaces)
+    // {
+    //   std::vector<std::string> surfacesForContactDetection =
+    //       config("surfacesForContactDetection", std::vector<std::string>());
 
-      measurements::ContactsManagerSurfacesConfiguration contactsConfig(name(), surfacesForContactDetection);
+    //   measurements::ContactsManagerSurfacesConfiguration contactsConfig(name(), surfacesForContactDetection);
 
-      contactsConfig.verbose(true);
-      if(config.has("schmittTriggerLowerPropThreshold") && config.has("schmittTriggerUpperPropThreshold"))
-      {
-        double schmittTriggerLowerPropThreshold = config("schmittTriggerLowerPropThreshold");
-        double schmittTriggerUpperPropThreshold = config("schmittTriggerUpperPropThreshold");
-        contactsConfig.schmittTriggerPropThresholds(schmittTriggerLowerPropThreshold, schmittTriggerUpperPropThreshold);
-      }
+    //   contactsConfig.verbose(true);
+    //   if(config.has("schmittTriggerLowerPropThreshold") && config.has("schmittTriggerUpperPropThreshold"))
+    //   {
+    //     double schmittTriggerLowerPropThreshold = config("schmittTriggerLowerPropThreshold");
+    //     double schmittTriggerUpperPropThreshold = config("schmittTriggerUpperPropThreshold");
+    //     contactsConfig.schmittTriggerPropThresholds(schmittTriggerLowerPropThreshold,
+    //     schmittTriggerUpperPropThreshold);
+    //   }
 
-      contactsManager_.init(ctl, robot_, contactsConfig);
-    }
-    if(contactsDetectionMethod == ContactsManager::ContactsDetection::Sensors)
-    {
-      measurements::ContactsManagerSensorsConfiguration contactsConfig(name());
-      contactsConfig.verbose(true);
-      if(config.has("schmittTriggerLowerPropThreshold") && config.has("schmittTriggerUpperPropThreshold"))
-      {
-        double schmittTriggerLowerPropThreshold = config("schmittTriggerLowerPropThreshold");
-        double schmittTriggerUpperPropThreshold = config("schmittTriggerUpperPropThreshold");
-        contactsConfig.schmittTriggerPropThresholds(schmittTriggerLowerPropThreshold, schmittTriggerUpperPropThreshold);
-      }
-      contactsManager_.init(ctl, robot_, contactsConfig);
-    }
-    if(contactsDetectionMethod == ContactsManager::ContactsDetection::Solver)
-    {
-      measurements::ContactsManagerSolverConfiguration contactsConfig(name());
-      contactsConfig.verbose(true);
-      if(config.has("schmittTriggerLowerPropThreshold") && config.has("schmittTriggerUpperPropThreshold"))
-      {
-        double schmittTriggerLowerPropThreshold = config("schmittTriggerLowerPropThreshold");
-        double schmittTriggerUpperPropThreshold = config("schmittTriggerUpperPropThreshold");
-        contactsConfig.schmittTriggerPropThresholds(schmittTriggerLowerPropThreshold, schmittTriggerUpperPropThreshold);
-      }
-      contactsManager_.init(ctl, robot_, contactsConfig);
-    }
+    //   contactsManager_.init(ctl, robot_, contactsConfig);
+    // }
+    // if(contactsDetectionMethod == ContactsManager::ContactsDetection::Sensors)
+    // {
+    //   measurements::ContactsManagerSensorsConfiguration contactsConfig(name());
+    //   contactsConfig.verbose(true);
+    //   if(config.has("schmittTriggerLowerPropThreshold") && config.has("schmittTriggerUpperPropThreshold"))
+    //   {
+    //     double schmittTriggerLowerPropThreshold = config("schmittTriggerLowerPropThreshold");
+    //     double schmittTriggerUpperPropThreshold = config("schmittTriggerUpperPropThreshold");
+    //     contactsConfig.schmittTriggerPropThresholds(schmittTriggerLowerPropThreshold,
+    //     schmittTriggerUpperPropThreshold);
+    //   }
+    //   contactsManager_.init(ctl, robot_, contactsConfig);
+    // }
+    // if(contactsDetectionMethod == ContactsManager::ContactsDetection::Solver)
+    // {
+    //   measurements::ContactsManagerSolverConfiguration contactsConfig(name());
+    //   contactsConfig.verbose(true);
+    //   if(config.has("schmittTriggerLowerPropThreshold") && config.has("schmittTriggerUpperPropThreshold"))
+    //   {
+    //     double schmittTriggerLowerPropThreshold = config("schmittTriggerLowerPropThreshold");
+    //     double schmittTriggerUpperPropThreshold = config("schmittTriggerUpperPropThreshold");
+    //     contactsConfig.schmittTriggerPropThresholds(schmittTriggerLowerPropThreshold,
+    //     schmittTriggerUpperPropThreshold);
+    //   }
+    //   contactsManager_.init(ctl, robot_, contactsConfig);
+    // }
   }
 }
 
@@ -117,7 +120,7 @@ bool MocapVisualizer::run(const mc_control::MCController & ctl)
 
     my_robots_->robot().mbc().q = ctl.realRobot().mbc().q;
     update(my_robots_->robot());
-    updateContacts(ctl);
+    // updateContacts(ctl);
 
     overlappingDatas_ = overlapTime_.at(currentIter_) == 1 ? true : false;
     currentIter_++;
@@ -127,34 +130,35 @@ bool MocapVisualizer::run(const mc_control::MCController & ctl)
   return true;
 }
 
-const stateObservation::kine::Kinematics & MocapVisualizer::getContactKinematics(MocapContact & contact,
-                                                                                 const mc_rbdyn::ForceSensor & fs)
-{
-  const auto & mocapRobot = my_robots_->robot();
+// const stateObservation::kine::Kinematics & MocapVisualizer::getContactKinematics(MocapContact & contact,
+//                                                                                  const mc_rbdyn::ForceSensor & fs)
+// {
+//   const auto & mocapRobot = my_robots_->robot();
 
-  if(contactsManager_.getContactsDetection() == measurements::ContactsManager<MocapContact>::ContactsDetection::Sensors)
-  {
-    // If the contact is detecting using thresholds, we will then consider the sensor frame as
-    // the contact surface frame directly.
-    const sva::PTransformd & bodyContactSensorPose = fs.X_p_f();
-    stateObservation::kine::Kinematics bodyContactSensorKine =
-        conversions::kinematics::fromSva(bodyContactSensorPose, stateObservation::kine::Kinematics::Flags::pose);
+//   if(contactsManager_.getContactsDetection() ==
+//   measurements::ContactsManager<MocapContact>::ContactsDetection::Sensors)
+//   {
+//     // If the contact is detecting using thresholds, we will then consider the sensor frame as
+//     // the contact surface frame directly.
+//     const sva::PTransformd & bodyContactSensorPose = fs.X_p_f();
+//     stateObservation::kine::Kinematics bodyContactSensorKine =
+//         conversions::kinematics::fromSva(bodyContactSensorPose, stateObservation::kine::Kinematics::Flags::pose);
 
-    // kinematics of the sensor's parent body in the world
-    stateObservation::kine::Kinematics worldBodyKine =
-        conversions::kinematics::fromSva(mocapRobot.mbc().bodyPosW[mocapRobot.bodyIndexByName(fs.parentBody())],
-                                         stateObservation::kine::Kinematics::Flags::pose);
+//     // kinematics of the sensor's parent body in the world
+//     stateObservation::kine::Kinematics worldBodyKine =
+//         conversions::kinematics::fromSva(mocapRobot.mbc().bodyPosW[mocapRobot.bodyIndexByName(fs.parentBody())],
+//                                          stateObservation::kine::Kinematics::Flags::pose);
 
-    contact.worldKine_ = worldBodyKine * bodyContactSensorKine;
-  }
-  else // the kinematics of the contact are the ones of the associated surface
-  {
-    contact.worldKine_ = conversions::kinematics::fromSva(mocapRobot.surfacePose(contact.surface()),
-                                                          stateObservation::kine::Kinematics::Flags::pose);
-  }
+//     contact.worldKine_ = worldBodyKine * bodyContactSensorKine;
+//   }
+//   else // the kinematics of the contact are the ones of the associated surface
+//   {
+//     contact.worldKine_ = conversions::kinematics::fromSva(mocapRobot.surfacePose(contact.surface()),
+//                                                           stateObservation::kine::Kinematics::Flags::pose);
+//   }
 
-  return contact.worldKine_;
-}
+//   return contact.worldKine_;
+// }
 
 ///////////////////////////////////////////////////////////////////////
 /// -------------------------Called functions--------------------------
@@ -170,23 +174,23 @@ void MocapVisualizer::update(mc_rbdyn::Robot & robot)
   robot.posW(X_0_fb_);
 }
 
-void MocapVisualizer::updateContacts(const mc_control::MCController & ctl)
-{
-  auto & logger = (const_cast<mc_control::MCController &>(ctl)).logger();
+// void MocapVisualizer::updateContacts(const mc_control::MCController & ctl)
+// {
+//   auto & logger = (const_cast<mc_control::MCController &>(ctl)).logger();
 
-  auto onNewContact = [this, &ctl, &logger](MocapContact & newContact)
-  {
-    getContactKinematics(newContact, ctl.robot().forceSensor(newContact.forceSensor()));
-    addContactsLogs(newContact, logger);
-  };
+//   auto onNewContact = [this, &ctl, &logger](MocapContact & newContact)
+//   {
+//     getContactKinematics(newContact, ctl.robot().forceSensor(newContact.forceSensor()));
+//     addContactsLogs(newContact, logger);
+//   };
 
-  auto onMaintainedContact = [this, &ctl](MocapContact & maintainedContact)
-  { getContactKinematics(maintainedContact, ctl.robot().forceSensor(maintainedContact.forceSensor())); };
+//   auto onMaintainedContact = [this, &ctl](MocapContact & maintainedContact)
+//   { getContactKinematics(maintainedContact, ctl.robot().forceSensor(maintainedContact.forceSensor())); };
 
-  auto onRemovedContact = [&logger](MocapContact & removedContact) { logger.removeLogEntries(&removedContact); };
+//   auto onRemovedContact = [&logger](MocapContact & removedContact) { logger.removeLogEntries(&removedContact); };
 
-  contactsManager_.updateContacts(ctl, robot_, onNewContact, onMaintainedContact, onRemovedContact);
-}
+//   contactsManager_.updateContacts(ctl, robot_, onNewContact, onMaintainedContact, onRemovedContact);
+// }
 ///////////////////////////////////////////////////////////////////////
 /// -------------------------------Logs--------------------------------
 ///////////////////////////////////////////////////////////////////////
@@ -223,14 +227,14 @@ void MocapVisualizer::addToLogger(const mc_control::MCController &,
   }
 }
 
-void MocapVisualizer::addContactsLogs(MocapContact & contact, mc_rtc::Logger & logger)
-{
-  logger.addLogEntry("MocapVisualizer_contacts_" + contact.name() + "_position", &contact,
-                     [&contact]() -> stateObservation::Vector3 { return contact.worldKine_.position(); });
-  logger.addLogEntry("MocapVisualizer_contacts_" + contact.name() + "_orientation", &contact,
-                     [&contact]() -> stateObservation::Quaternion
-                     { return contact.worldKine_.orientation.toQuaternion().inverse(); });
-}
+// void MocapVisualizer::addContactsLogs(MocapContact & contact, mc_rtc::Logger & logger)
+// {
+//   logger.addLogEntry("MocapVisualizer_contacts_" + contact.name() + "_position", &contact,
+//                      [&contact]() -> stateObservation::Vector3 { return contact.worldKine_.position(); });
+//   logger.addLogEntry("MocapVisualizer_contacts_" + contact.name() + "_orientation", &contact,
+//                      [&contact]() -> stateObservation::Quaternion
+//                      { return contact.worldKine_.orientation.toQuaternion().inverse(); });
+// }
 
 void MocapVisualizer::removeFromLogger(mc_rtc::Logger &, const std::string &) {}
 

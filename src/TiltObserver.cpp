@@ -10,13 +10,10 @@ namespace mc_state_observation
 {
 
 namespace so = stateObservation;
-using OdometryType = stateObservation::odometry::OdometryType;
-using LoContactsManager = stateObservation::odometry::LeggedOdometryManager::ContactsManager;
 
-TiltObserver::TiltObserver(const std::string & type, double dt, bool asBackup)
+TiltObserver::TiltObserver(const std::string & type, double dt)
 : mc_observers::Observer(type, dt), estimator_(alpha_, beta_, gamma_, dt)
 {
-  asBackup_ = asBackup;
 }
 
 void TiltObserver::configure(const mc_control::MCController & ctl, const mc_rtc::Configuration & config)
@@ -93,6 +90,7 @@ void TiltObserver::reset(const mc_control::MCController & ctl)
 
 bool TiltObserver::run(const mc_control::MCController & ctl)
 {
+  const auto & robot = ctl.robot(robot_);
   const auto & realRobot = ctl.realRobot(robot_);
   auto & logger = (const_cast<mc_control::MCController &>(ctl)).logger();
 
@@ -103,6 +101,12 @@ bool TiltObserver::run(const mc_control::MCController & ctl)
   std::copy(std::next(realAlpha.begin()), realAlpha.end(),
             std::next(my_robots_->robot("updatedRobot").mbc().alpha.begin()));
 
+  my_robots_->robot("updatedRobot").mbc().q[0] = robot.mbc().q[0];
+  my_robots_->robot("updatedRobot").mbc().alpha[0] = robot.mbc().alpha[0];
+
+  my_robots_->robot("updatedRobot").forwardKinematics();
+  my_robots_->robot("updatedRobot").forwardVelocity();
+
   if(logger.t() > 1.0)
   {
     alpha_ = finalAlpha_;
@@ -110,17 +114,9 @@ bool TiltObserver::run(const mc_control::MCController & ctl)
     gamma_ = finalGamma_;
   }
 
-  const auto & robot = ctl.robot(robot_);
-
   estimator_.setAlpha(alpha_);
   estimator_.setBeta(beta_);
   estimator_.setGamma(gamma_);
-
-  my_robots_->robot("updatedRobot").mbc().q[0] = robot.mbc().q[0];
-  my_robots_->robot("updatedRobot").mbc().alpha[0] = robot.mbc().alpha[0];
-
-  my_robots_->robot("updatedRobot").forwardKinematics();
-  my_robots_->robot("updatedRobot").forwardVelocity();
 
   updateNecessaryFrames(ctl, my_robots_->robot("updatedRobot"));
 
@@ -155,8 +151,6 @@ bool TiltObserver::run(const mc_control::MCController & ctl)
   R_0_fb_ = estimatedRotationIMU_ * fbImuKine_.orientation.toMatrix3().transpose();
 
   updatePoseAndVel(xk_.head(3), imu.angularVelocity());
-
-  if(asBackup_) { backupFbKinematics_.push_back(correctedWorldFbKine_); }
 
   iter_++;
 
@@ -219,8 +213,10 @@ void TiltObserver::updateNecessaryFrames(const mc_control::MCController & ctl, c
   // pose of the floating base' frame in the world for the robot with the updated encoders
   worldFbKine_ = conversions::kinematics::fromSva(updatedRobot.posW(), updatedRobot.velW(), true);
 
-  // we use the imu object of control robot because the copy of BodySensor objects seems to be incomplete. Anyway we use
-  // it only to get information about the parent body, which is the same as in the control robot.
+  fbAnchorKine_ = worldFbKine_.getInverse() * worldAnchorKine_;
+
+  // we use the imu object of control robot because the copy of BodySensor objects seems to be incomplete. Anyway we
+  // use it only to get information about the parent body, which is the same as in the control robot.
   const sva::PTransformd & imuXbs = imu.X_b_s();
   so::kine::Kinematics parentImuKine =
       conversions::kinematics::fromSva(imuXbs, so::kine::Kinematics::Flags::pose | so::kine::Kinematics::Flags::vel);
@@ -271,10 +267,8 @@ void TiltObserver::updateNecessaryFrames(const mc_control::MCController & ctl, c
 
 void TiltObserver::updatePoseAndVel(const so::Vector3 & localWorldImuLinVel, const so::Vector3 & localWorldImuAngVel)
 {
-  so::kine::Kinematics fbAnchorKine = worldFbKine_.getInverse() * worldAnchorKine_;
-
   correctedWorldFbKine_.orientation = R_0_fb_;
-  correctedWorldFbKine_.position = worldAnchorKine_ctl_.position() - R_0_fb_ * fbAnchorKine.position();
+  correctedWorldFbKine_.position = worldAnchorKine_ctl_.position() - R_0_fb_ * fbAnchorKine_.position();
 
   poseW_.translation() = correctedWorldFbKine_.position();
   poseW_.rotation() = R_0_fb_.transpose();
@@ -320,60 +314,6 @@ void TiltObserver::update(mc_rbdyn::Robot & robot)
 {
   robot.posW(poseW_);
   robot.velW(velW_);
-}
-
-const so::kine::Kinematics TiltObserver::backupFb(boost::circular_buffer<so::kine::Kinematics> * koBackupFbKinematics)
-{
-  // new initial pose of the floating base
-  so::kine::Kinematics worldResetKine = *(koBackupFbKinematics->begin());
-
-  // original initial pose of the floating base
-  so::kine::Kinematics worldFbInitBackup = backupFbKinematics_.front();
-
-  so::kine::Kinematics fbWorldInitBackup = worldFbInitBackup.getInverse();
-
-  // we apply the transformation from the initial pose to the intermediates pose estimated by the tilt estimator to the
-  // new starting pose of the Kinetics Observer
-  for(int i = 0; i < koBackupFbKinematics->size(); i++)
-  {
-    // Intermediary pose of the floating base estimated by the tilt estimator
-    so::kine::Kinematics worldFbIntermBackup = backupFbKinematics_.at(i);
-
-    // transformation between the initial and the intermediary pose during the backup interval
-    so::kine::Kinematics initInterm = fbWorldInitBackup * worldFbIntermBackup;
-
-    koBackupFbKinematics->at(i) = worldResetKine * initInterm;
-  }
-
-  so::Vector3 tiltLocalLinVel = poseW_.rotation() * velW_.linear();
-  so::Vector3 tiltLocalAngVel = poseW_.rotation() * velW_.angular();
-
-  // koBackupFbKinematics->back() is the new last pose of the kinetics observer
-  koBackupFbKinematics->back().linVel = koBackupFbKinematics->back().orientation.toMatrix3() * tiltLocalLinVel;
-  koBackupFbKinematics->back().angVel = koBackupFbKinematics->back().orientation.toMatrix3() * tiltLocalAngVel;
-
-  return koBackupFbKinematics->back();
-}
-
-so::kine::Kinematics TiltObserver::applyLastTransformation(const so::kine::Kinematics & previousKine)
-{
-  so::kine::Kinematics worldFbPreviousBackup = backupFbKinematics_.at(backupFbKinematics_.size() - 2);
-
-  so::kine::Kinematics fbWorldPreviousBackup = worldFbPreviousBackup.getInverse();
-  so::kine::Kinematics worldFbFinalBackup = backupFbKinematics_.back();
-
-  so::kine::Kinematics lastTransformation = fbWorldPreviousBackup * worldFbFinalBackup;
-
-  so::kine::Kinematics newKine = previousKine * lastTransformation;
-
-  so::Vector3 tiltLocalLinVel = poseW_.rotation() * velW_.linear();
-  so::Vector3 tiltLocalAngVel = poseW_.rotation() * velW_.angular();
-
-  // koBackupFbKinematics->back() is the new last pose of the kinetics observer
-  newKine.linVel = newKine.orientation.toMatrix3() * tiltLocalLinVel;
-  newKine.angVel = newKine.orientation.toMatrix3() * tiltLocalAngVel;
-
-  return newKine;
 }
 
 void TiltObserver::addToLogger(const mc_control::MCController & ctl,
@@ -606,12 +546,14 @@ void TiltObserver::addToLogger(const mc_control::MCController & ctl,
                        });
 
     conversions::kinematics::addToLogger(logger, worldAnchorKine_ctl_, category + "_debug_worldAnchorKine_ctl");
+    conversions::kinematics::addToLogger(logger, worldAnchorKine_, category + "_debug_worldAnchorKine");
     conversions::kinematics::addToLogger(logger, worldImuKine_, category + "_debug_worldImuKine");
     conversions::kinematics::addToLogger(logger, worldImuKine_ctl_, category + "_debug_worldImuKine_ctl");
-    conversions::kinematics::addToLogger(logger, imuAnchorKine_, category + "_debug_imuAnchorKine_");
+    conversions::kinematics::addToLogger(logger, imuAnchorKine_, category + "_debug_imuAnchorKine");
 
-    conversions::kinematics::addToLogger(logger, worldFbKine_, category + "_debug_worldFbKine_");
-    conversions::kinematics::addToLogger(logger, correctedWorldImuKine_, category + "_debug_correctedWorldImuKine_");
+    conversions::kinematics::addToLogger(logger, worldFbKine_, category + "_debug_worldFbKine");
+    conversions::kinematics::addToLogger(logger, correctedWorldImuKine_, category + "_debug_correctedWorldImuKine");
+    conversions::kinematics::addToLogger(logger, fbAnchorKine_, category + "_debug_fbAnchorKine");
   }
 }
 

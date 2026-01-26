@@ -5,17 +5,35 @@
 namespace mc_state_observation
 {
 
-struct TiltObserverOdometry : public TiltObserver
+struct MCValinor : public TiltObserver
 {
+
+  // we define MCKineticsObserver as a friend as it can instantiate this observer as a backup
+  friend struct MCKineticsObserver;
   /// @brief Constructor for the TiltObserver.
   /// @details The parameter is given only if the Tilt Observer is used as a backup by the Kinetics Observer
-  TiltObserverOdometry(const std::string & type, double dt, bool asBackup = false);
+  MCValinor(const std::string & type, double dt, bool asBackup = false);
 
   void configure(const mc_control::MCController & ctl, const mc_rtc::Configuration &) override;
 
   void reset(const mc_control::MCController & ctl) override;
 
   bool run(const mc_control::MCController & ctl) override;
+
+  /// @brief Backup function that returns the estimated displacement of the floating base in the world wrt to the
+  /// initial one over the backup interval.
+  /// @param koBackupFbKinematics Buffer containing the pose of the floating base in the world estimated by the Kinetics
+  /// Observer over the whole backup interval.
+  /// @return const stateObservation::kine::Kinematics
+  const stateObservation::kine::Kinematics backupFb(
+      boost::circular_buffer<stateObservation::kine::Kinematics> * koBackupFbKinematics);
+
+  /// @brief Computes the pose transformation estimated by the Tilt Observer between the last two iterations and
+  /// applies it to the given kinematics.
+  /// @details Also fills the velocity with the velocity estimated by the Tilt Observer (expressed in the new frame)
+  /// @param kine The kinematics on which to apply the transformation
+  /// @return stateObservation::kine::Kinematics
+  stateObservation::kine::Kinematics applyLastTransformation(const stateObservation::kine::Kinematics & kine);
 
 protected:
   /*! \brief update the robot pose in the world only for visualization purpose
@@ -74,11 +92,18 @@ public:
   stateObservation::kine::Kinematics estimatedWorldFbKine_;
 
 private:
-  using TiltContact = stateObservation::odometry::LoContact;
   using ContactsDetector = measurements::ContactsDetector<stateObservation::odometry::LoContact>;
   ContactsDetector contactsDetector_;
 
   stateObservation::odometry::LeggedOdometryManager odometryManager_; // manager for the legged odometry
+
+  /* Odometry parameters */
+
+  /* Variables for the use as a backup */
+  // indicates if the estimator is used as a backup or not
+  bool asBackup_ = false;
+  // Buffer containing the estimated pose of the floating base in the world over the whole backup interval.
+  boost::circular_buffer<stateObservation::kine::Kinematics> backupFbKinematics_;
 };
 
 } // namespace mc_state_observation
