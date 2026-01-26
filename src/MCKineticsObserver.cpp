@@ -55,24 +55,15 @@ void MCKineticsObserver::configure(const mc_control::MCController & ctl, const m
   KoContactsDetector::ContactsDetection contactsDetectionMethod =
       KoContactsDetector::stringToContactsDetection(contactsDetectionString, name());
 
-  contactsConfig("forceSensorsAsInput", forceSensorsAsInput_);
-
   if(contactsDetectionMethod == KoContactsDetector::ContactsDetection::Surfaces)
   {
     std::vector<std::string> surfacesForContactDetection =
         contactsConfig("surfacesForContactDetection", std::vector<std::string>());
 
-    std::unordered_set<std::string> surfaceSensorNames;
-    surfaceSensorNames.reserve(surfacesForContactDetection.size());
-
     for(const auto & surface : surfacesForContactDetection)
     {
-      surfaceSensorNames.insert(ctl.robot().indirectSurfaceForceSensor(surface).name());
-    }
-
-    for(const auto & forceSensor : ctl.robot().forceSensors())
-    {
-      if(!surfaceSensorNames.count(forceSensor.name())) { forceSensorsAsInput_.push_back(forceSensor.name()); }
+      const std::string fsName = ctl.robot().indirectSurfaceForceSensor(surface).name();
+      contactsManager_.fs_Surface_Map.emplace(fsName, surface);
     }
 
     measurements::ContactsDetectorSurfacesConfiguration contactsConf(surfacesForContactDetection);
@@ -85,25 +76,10 @@ void MCKineticsObserver::configure(const mc_control::MCController & ctl, const m
     }
 
     contactsDetector_.init(ctl, robot_, contactsConf);
-
-    // we set the force sensor of the desired contacts as disabled
-    std::vector<std::string> contactSensorsDisabledInit =
-        contactsConfig("contactSensorsDisabledInit", std::vector<std::string>());
-    for(auto const & contactSensorDisabledInit : contactSensorsDisabledInit)
-    {
-      auto * contact = contactsManager_.findContact(contactSensorDisabledInit);
-      if(!contact)
-      {
-        mc_rtc::log::error_and_throw("The force sensor {} set as disabled on initialization does not exist.",
-                                     contactSensorDisabledInit);
-      }
-      contact->sensorEnabled_ = false;
-    }
   }
   if(contactsDetectionMethod == KoContactsDetector::ContactsDetection::Sensors)
   {
     measurements::ContactsDetectorSensorsConfiguration contactsConf;
-    contactsConf.forceSensorsToOmit(forceSensorsAsInput_);
     if(contactsConfig.has("schmittTriggerLowerPropThreshold") && contactsConfig.has("schmittTriggerUpperPropThreshold"))
     {
       double schmittTriggerLowerPropThreshold = contactsConfig("schmittTriggerLowerPropThreshold");
@@ -111,20 +87,6 @@ void MCKineticsObserver::configure(const mc_control::MCController & ctl, const m
       contactsConf.schmittTriggerPropThresholds(schmittTriggerLowerPropThreshold, schmittTriggerUpperPropThreshold);
     }
     contactsDetector_.init(ctl, robot_, contactsConf);
-
-    // we set the force sensor of the desired contacts as disabled
-    std::vector<std::string> contactSensorsDisabledInit =
-        contactsConfig("contactSensorsDisabledInit", std::vector<std::string>());
-    for(const auto & contactSensorDisabledInit : contactSensorsDisabledInit)
-    {
-      auto * contact = contactsManager_.findContact(contactSensorDisabledInit);
-      if(!contact)
-      {
-        mc_rtc::log::error_and_throw("The force sensor {} set as disabled on initialization does not exist.",
-                                     contactSensorDisabledInit);
-      }
-      contact->sensorEnabled_ = false;
-    }
   }
   if(contactsDetectionMethod == KoContactsDetector::ContactsDetection::Solver)
   {
@@ -385,21 +347,6 @@ void MCKineticsObserver::reset(const mc_control::MCController & ctl)
   X_0_fb_ = realRobot.posW().translation();
 
   initObserverStateVector(ctl, realRobot);
-}
-
-void MCKineticsObserver::addSensorsAsInputs(const mc_control::MCController & ctl,
-                                            const mc_rbdyn::Robot & measRobot,
-                                            so::Vector3 & inputAddtionalForce,
-                                            so::Vector3 & inputAddtionalTorque)
-{
-  for(const std::string & fsName : forceSensorsAsInput_)
-  {
-    const mc_rbdyn::ForceSensor & forceSensor = measRobot.forceSensor(fsName);
-    sva::ForceVecd measuredWrench = forceSensor.worldWrenchWithoutGravity(ctl.realRobot(robot_));
-
-    inputAddtionalForce += measuredWrench.force();
-    inputAddtionalTorque += measuredWrench.moment();
-  }
 }
 
 bool MCKineticsObserver::run(const mc_control::MCController & ctl)
@@ -753,32 +700,29 @@ void MCKineticsObserver::inputAdditionalWrench(const mc_control::MCController & 
   additionalUserResultingForce_.setZero();
   additionalUserResultingMoment_.setZero();
 
-  for(auto & contactWithSensor : contactsManager_.contacts())
+  for(const auto & forceSensor : measRobot.forceSensors())
   {
-    const KoContactWithSensor & contact = contactWithSensor.second;
-    const mc_rbdyn::ForceSensor & fs = inputRobot.forceSensor(contact.fsName_);
+    const auto it = contactsManager_.fs_Surface_Map.find(forceSensor.name());
 
-    if(!contact.isSet()
-       && contact.sensorEnabled_) // if the contact is not set but we use the force sensor measurements,
-                                  // then we give the measured force as an input to the Kinetics Observer
+    bool useSensor = false;
+
+    if(it == contactsManager_.fs_Surface_Map.end() || !contactsManager_.contacts().count(it->second))
     {
-      sva::ForceVecd measuredWrench = fs.worldWrenchWithoutGravity(ctl.realRobot(robot_));
+      useSensor = true; // not associated to any contact
+    }
+    else
+    {
+      auto * contact = contactsManager_.findContact(it->second);
+      useSensor = (contact && contact->sensorEnabled_ && !contact->isSet());
+    }
+
+    if(useSensor)
+    {
+      sva::ForceVecd measuredWrench = forceSensor.worldWrenchWithoutGravity(ctl.realRobot(robot_));
       additionalUserResultingForce_ += measuredWrench.force();
       additionalUserResultingMoment_ += measuredWrench.moment();
     }
   }
-  // // we add the wrench measured by the sensors that are not associated to contacts
-  // for(auto & forceSensor : measRobot.forceSensors())
-  // {
-  //   if(!contactsManager_.contacts().count(forceSensor.name()))
-  //   {
-  //     sva::ForceVecd measuredWrench = forceSensor.worldWrenchWithoutGravity(ctl.realRobot(robot_));
-  //     additionalUserResultingForce_ += measuredWrench.force();
-  //     additionalUserResultingMoment_ += measuredWrench.moment();
-  //   }
-  // }
-
-  addSensorsAsInputs(ctl, measRobot, additionalUserResultingForce_, additionalUserResultingMoment_);
 
   // We pass this computed wrench as an input to the Kinetics Observer
   observer_.setAdditionalWrench(additionalUserResultingForce_, additionalUserResultingMoment_);

@@ -54,6 +54,12 @@ public:
   bool sensorEnabled_ = true;
 };
 
+struct KoContactsManager : public stateObservation::measurements::ContactsManager<KoContactWithSensor>
+{
+  // map that relates a force sensor to the associated surface
+  std::unordered_map<std::string, std::string> fs_Surface_Map;
+};
+
 struct MCKineticsObserver : public mc_observers::Observer
 {
 
@@ -88,17 +94,6 @@ protected:
   void inputAdditionalWrench(const mc_control::MCController & ctl,
                              const mc_rbdyn::Robot & inputRobot,
                              const mc_rbdyn::Robot & measRobot);
-
-  /// @brief Adds the measurement of the desired sensors to the external force given as an input to the Kinetics
-  /// Observer
-  /// @details The force sensors must be given with the list forceSensorsAsInput_
-  /// @param measRobot The control robot. Used to retrieve the measurements.
-  /// @param inputAddtionalForce the external force given as input
-  /// @param inputAddtionalTorque the external torque given as input
-  void addSensorsAsInputs(const mc_control::MCController & ctl,
-                          const mc_rbdyn::Robot & measRobot,
-                          stateObservation::Vector3 & inputAddtionalForce,
-                          stateObservation::Vector3 & inputAddtionalTorque);
 
   /// @brief Update the IMUs, including the measurements, measurement covariances and kinematics in the floating
   /// base's frame (user frame)
@@ -439,16 +434,10 @@ private:
   // covariance on the gyrometer measurement
   stateObservation::Matrix3 absoluteOriSensorCovariance_;
 
-  /* Contacts manager variables */
-  using KoContactsManager = stateObservation::measurements::ContactsManager<KoContactWithSensor>;
-  KoContactsManager contactsManager_;
-
   using KoContactsDetector = measurements::ContactsDetector<KoContactWithSensor>;
   KoContactsDetector contactsDetector_;
 
-  // list of the force sensors that cannot be used with contacts but we want to use their measurements as inputs to the
-  // Kinetics Observer
-  std::vector<std::string> forceSensorsAsInput_ = std::vector<std::string>();
+  KoContactsManager contactsManager_;
 
   /* IMU variables */
   // manager for the IMUs
