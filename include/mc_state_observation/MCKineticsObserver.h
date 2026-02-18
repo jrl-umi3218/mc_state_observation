@@ -337,8 +337,6 @@ private:
   std::shared_ptr<mc_rbdyn::Robots> my_robots_;
   // std::string imuSensor_ = "";
   std::vector<std::string> imuNames_; ///< list of IMUs
-  // contacts maintained during the current iteration
-  std::vector<KoContactWithSensor *> maintainedContacts_;
 
   /* Estimation parameters */
   bool debug_ = false;

@@ -618,10 +618,6 @@ bool MCKineticsObserver::run(const mc_control::MCController & ctl)
   {
     /* Update of the logged variables */
     correctedMeasurements_ = observer_.getEKF().getSimulatedMeasurement(observer_.getEKF().getCurrentTime());
-    for(auto & contact : maintainedContacts_)
-    {
-      contact->viscoElasticWrenchAfterCorrection_ = observer_.getCurrentViscoElasticWrench(contact->id());
-    }
 
     globalCentroidKinematics_ = observer_.getGlobalCentroidKinematics();
 
@@ -1047,7 +1043,8 @@ void MCKineticsObserver::updateContacts(const mc_control::MCController & ctl, mc
   auto onMaintainedContact = [this, &ctl](KoContactWithSensor & maintainedContact)
   {
     updateContact(ctl, maintainedContact);
-    maintainedContacts_.push_back(&maintainedContact);
+    maintainedContact.viscoElasticWrenchAfterCorrection_ =
+        observer_.getCurrentViscoElasticWrench(maintainedContact.id());
   };
   auto onRemovedContact = [this, &logger](KoContactWithSensor & removedContact)
   {
