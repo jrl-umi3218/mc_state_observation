@@ -105,7 +105,7 @@ void MCKineticsObserver::configure(const mc_control::MCController & ctl, const m
   config("withUnmodeledWrench", withUnmodeledWrench_);
   config("withGyroBias", withGyroBias_);
 
-  bool withFiniteDifferences = true;
+  bool withFiniteDifferences = false;
   config("withFiniteDifferences", withFiniteDifferences);
 
   observer_.setWithUnmodeledWrench(withUnmodeledWrench_);
