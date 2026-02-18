@@ -472,11 +472,6 @@ const so::kine::Kinematics MCWaiko::backupFb(boost::circular_buffer<so::kine::Ki
 
 void MCWaiko::setOdometryType(OdometryType newOdometryType)
 {
-  if((newOdometryType != OdometryType::Odometry6d) && (newOdometryType != OdometryType::Flat))
-  {
-    mc_rtc::log::error_and_throw<std::runtime_error>("Please choose between these two odometry types: [6D, Flat]");
-  }
-
   odometryManager_.setOdometryType(newOdometryType);
 }
 
