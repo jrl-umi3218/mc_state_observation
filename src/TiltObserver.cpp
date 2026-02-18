@@ -25,7 +25,6 @@ void TiltObserver::configure(const mc_control::MCController & ctl, const mc_rtc:
   config("updateSensor", updateSensor_);
   config("withDebugLogs", withDebugLogs_);
 
-  auto contactsConfig = config("contacts");
   auto filterGainsConfig = config("filterGains");
 
   filterGainsConfig("initAlpha", alpha_);
