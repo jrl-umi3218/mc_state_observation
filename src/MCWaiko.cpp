@@ -287,12 +287,11 @@ bool MCWaiko::run(const mc_control::MCController & ctl)
   };
 
   std::unordered_set<std::string> & contactList = contactsDetector_.updateContacts(ctl, robot_);
-  stateObservation::odometry::LeggedOdometryManager::ContactUpdateFunctions contactUpdateFunctions =
-      stateObservation::odometry::LeggedOdometryManager::ContactUpdateFunctions()
-          .onAddedContact(onAddedContactOdom)
-          .onNewContact(onNewContactOdom)
-          .onMaintainedContact(onMaintainedContactOdom)
-          .onRemovedContact(onRemovedContactOdom);
+  auto contactUpdateFunctions = stateObservation::odometry::LeggedOdometryManager::ContactUpdateFunctions()
+                                    .onAddedContact(onAddedContactOdom)
+                                    .onNewContact(onNewContactOdom)
+                                    .onMaintainedContact(onMaintainedContactOdom)
+                                    .onRemovedContact(onRemovedContactOdom);
 
   odometryManager_.initLoop(contactList, contactUpdateFunctions, &velW_.linear(), &velW_.angular());
 

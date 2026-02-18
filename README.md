@@ -249,7 +249,7 @@ leggedOdometry:
   correctContacts: true # defines if the contact reference poses must be corrected over time
 ```
 Possible modes:
-- `None`: the observer remains attached to the control robot and can be used as a feedback for the controller.
+- `None`: (default) the observer remains attached to the control robot and can be used as a feedback for the controller.
 - `6D`: the observer performs 6D odometry. Its pose is obtained using the sensor measurements and is independent from the one of the control robot.
 - `Flat`: odometry for walks on flat ground. Contacts are created with a zero height, constraining the robot to the ground. Use the 6D odometry if you intend to create other kinds of contacts.
 
