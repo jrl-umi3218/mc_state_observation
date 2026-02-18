@@ -318,6 +318,9 @@ private:
   // instance of the Tilt Observer used as a backup
   MCValinor valinor_;
 
+  // contacts maintained during the current iteration
+  std::unordered_map<unsigned, KoContactWithSensor *> maintainedContacts_;
+
   enum EstimationState
   {
     noIssue,
