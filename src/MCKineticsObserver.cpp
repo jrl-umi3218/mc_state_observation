@@ -105,18 +105,24 @@ void MCKineticsObserver::configure(const mc_control::MCController & ctl, const m
   config("withUnmodeledWrench", withUnmodeledWrench_);
   config("withGyroBias", withGyroBias_);
 
+  bool withFiniteDifferences = true;
+  config("withFiniteDifferences", withFiniteDifferences);
+
   observer_.setWithUnmodeledWrench(withUnmodeledWrench_);
   observer_.setWithGyroBias(withGyroBias_);
-  bool useFiniteDifferences = config("withFiniteDifferences");
-  if(useFiniteDifferences)
+
+  if(withFiniteDifferences)
   {
-    observer_.useFiniteDifferencesJacobians(useFiniteDifferences);
+    double finiteDifferenceStep = static_cast<double>(config("finiteDifferenceStep"));
+    observer_.useFiniteDifferencesJacobians(withFiniteDifferences);
     so::Vector dx(observer_.getStateSize());
-    dx.setConstant(static_cast<double>(config("finiteDifferenceStep")));
+    dx.setConstant(finiteDifferenceStep);
     observer_.setFiniteDifferenceStep(dx);
   }
 
-  observer_.setWithAccelerationEstimation(config("withAccelerationEstimation"));
+  bool withAccelerationEstimation = true;
+  config("withAccelerationEstimation", withAccelerationEstimation);
+  observer_.setWithAccelerationEstimation(withAccelerationEstimation);
 
   if(config.has("withAdaptativeContactProcessCov"))
   {
@@ -250,7 +256,7 @@ void MCKineticsObserver::configure(const mc_control::MCController & ctl, const m
 
   /* Configuration of the backup based on the Tilt Observer */
   // interval (in s) on which the backup will recover
-  int backupInterval = config("backupInterval", 1);
+  double backupInterval = config("backupInterval", 0.5);
   fbBackupCapacity_ = size_t(backupInterval / ctl.timeStep);
 
   koBackupFbKinematics_.set_capacity(fbBackupCapacity_);
