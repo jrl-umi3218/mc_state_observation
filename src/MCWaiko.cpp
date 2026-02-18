@@ -28,26 +28,27 @@ void MCWaiko::configure(const mc_control::MCController & ctl, const mc_rtc::Conf
   config("updateSensor", updateSensor_);
   config("withDebugLogs", withDebugLogs_);
 
-  auto odomConfig = config("leggedOdometry");
   auto contactsConfig = config("contacts");
-  auto filterGainsConfig = config("filterGains");
 
-  filterGainsConfig("initAlpha", alpha_);
-  filterGainsConfig("initBeta", beta_);
-  filterGainsConfig("initGamma", gamma_);
-  filterGainsConfig("initMu", mu_);
-  filterGainsConfig("initRho", rho_);
+  if(config.has("filterGains"))
+  {
+    auto filterGainsConfig = config("filterGains");
+    alpha_ = filterGainsConfig("initAlpha", 4);
+    beta_ = filterGainsConfig("initBeta", 1);
+    gamma_ = filterGainsConfig("initGamma", 4);
+    mu_ = filterGainsConfig("initMu", 4);
+    rho_ = filterGainsConfig("initRho", 4);
 
-  filterGainsConfig("finalAlpha", finalAlpha_);
-  filterGainsConfig("finalBeta", finalBeta_);
-  filterGainsConfig("finalGamma", finalGamma_);
-  filterGainsConfig("finalMu", finalMu_);
-  filterGainsConfig("finalRho", finalRho_);
+    finalAlpha_ = filterGainsConfig("finalAlpha", 4);
+    finalBeta_ = filterGainsConfig("finalBeta", 1);
+    finalGamma_ = filterGainsConfig("finalGamma", 4);
+    finalMu_ = filterGainsConfig("finalMu", 2);
+    finalRho_ = filterGainsConfig("finalRho", 2);
+  }
 
   // filterGainsConfig("finalEta", eta_contacts_final_);
 
   anchorFrameFunction_ = "KinematicAnchorFrame::" + ctl.robot(robot_).name();
-  // if a user-defined anchor frame function is given, we use it instead
   if(config.has("anchorFrameFunction"))
   {
     if(ctl.datastore().has(anchorFrameFunction_))
@@ -56,10 +57,6 @@ void MCWaiko::configure(const mc_control::MCController & ctl, const mc_rtc::Conf
     }
   }
 
-  std::string odometryTypeStr = static_cast<std::string>(odomConfig("odometryType"));
-  // we set the odometry type now because it will be necessary for the next check
-  setOdometryType(stateObservation::odometry::stringToOdometryType(odometryTypeStr));
-
   std::vector<std::string> surfacesForContactDetection =
       contactsConfig("surfacesForContactDetection", std::vector<std::string>());
 
@@ -67,20 +64,31 @@ void MCWaiko::configure(const mc_control::MCController & ctl, const mc_rtc::Conf
 
   contactsDetector_.init(ctl, robot_, contactsConf);
 
+  mc_rtc::Configuration odomConfig;
+  if(config.has("leggedOdometry"))
+  {
+    odomConfig = config("leggedOdometry");
+    if(odomConfig.has("odometryType"))
+    {
+      setOdometryType(
+          stateObservation::odometry::stringToOdometryType(static_cast<std::string>(odomConfig("odometryType"))));
+    }
+  }
+  else
+  {
+    odomConfig.add("correctContacts", true);
+    odomConfig.add("kappa", 10);
+    odomConfig.add("lambdaInf", 0.001);
+  }
+
   // specific configurations for the use of odometry.
   if(odometryManager_.odometryType_ != OdometryType::None)
   {
     bool correctContacts = odomConfig("correctContacts", true);
-    if(odomConfig.has("kappa"))
-    {
-      double kappa = odomConfig("kappa");
-      odometryManager_.kappa(kappa);
-    }
-    if(odomConfig.has("lambdaInf"))
-    {
-      double lambdaInf = odomConfig("lambdaInf");
-      odometryManager_.lambdaInf(lambdaInf);
-    }
+    double kappa = odomConfig("kappa", 10);
+    odometryManager_.kappa(kappa);
+    double lambdaInf = odomConfig("lambdaInf", 0.001);
+    odometryManager_.lambdaInf(lambdaInf);
 
     const auto & imu = ctl.robot(robot_).bodySensor(imuSensor_);
 
@@ -99,8 +107,7 @@ void MCWaiko::configure(const mc_control::MCController & ctl, const mc_rtc::Conf
 
     // pose and velocities of the IMU in the world frame for the odometry robot
     worldImuKine_ = worldParentKine * parentImuKine;
-    stateObservation::odometry::LeggedOdometryManager::Configuration loConfig(
-        stateObservation::odometry::stringToOdometryType(odometryTypeStr));
+    stateObservation::odometry::LeggedOdometryManager::Configuration loConfig(odometryManager_.odometryType_);
     loConfig.correctContacts(correctContacts);
 
     odometryManager_.init(loConfig, worldImuKine_.toVector(stateObservation::kine::Kinematics::Flags::pose));
