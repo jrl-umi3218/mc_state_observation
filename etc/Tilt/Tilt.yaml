@@ -1,9 +1,9 @@
 filterGains:
-  initAlpha: 4 
-  initBeta: 4 
-  initGamma: 1 
-  finalAlpha: 4 
-  finalBeta: 4 
+  initAlpha: 4
+  initBeta: 4
+  initGamma: 1
+  finalAlpha: 4
+  finalBeta: 4
   finalGamma: 1
 
 leggedOdometry:

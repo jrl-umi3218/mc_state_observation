@@ -1,4 +1,5 @@
-option(INSTALL_OBSERVER_CONFIG_FILES "Install observer configuration files to local directory" ON)
+option(INSTALL_OBSERVER_CONFIG_FILES
+       "Install observer configuration files to local directory" ON)
 
 if(${INSTALL_OBSERVER_CONFIG_FILES})
   set(OBSERVERS MCKineticsObserver Tilt MCWaiko MCValinor)

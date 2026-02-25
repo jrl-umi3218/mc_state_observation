@@ -1611,7 +1611,7 @@ void MCKineticsObserver::addToGUI(const mc_control::MCController &,
             mc_state_observation::gui::make_input_element("Torque x", contactSensorCovariance_(3,3)),
             mc_state_observation::gui::make_input_element("Torque y", contactSensorCovariance_(4,4)),
             mc_state_observation::gui::make_input_element("Torque z", contactSensorCovariance_(5,5)));
-  
+
   if(odometryType_ != stateObservation::odometry::OdometryType::None)
   {
     std::vector<std::string> odomCategory = category;
