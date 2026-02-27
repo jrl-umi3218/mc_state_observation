@@ -178,15 +178,18 @@ protected:
                                      const sva::ForceVecd & measuredWrench,
                                      const stateObservation::kine::Kinematics * contactSensorKine = nullptr);
 
-  /// @brief Computes the rest pose of the contact in the world using the visco-elastic model.
-  /// @details Uses the measured wrench to obtain the rest pose of the contact from the one obtained by forward
-  /// kinematics. The visco-elastic model allows to compute the slight displacement resulting from the applied wrench.
+  /// @brief Computes the rest pose of the contact in the world.
+  /// @details At contact detection, a wrench is already applied, which means the contact frame obtained by forward
+  /// kinematics is not the rest pose. We thus remove it using the viscoelastic model and the measured wrench.
   /// @param ctl Controller
-  /// @param contact Contact for which we compute the rest pose.
-  /// @param worldContactKineRef rest pose of the contact in the world, which is modified by this function.
-  void getOdometryWorldContactRest(const mc_control::MCController & ctl,
-                                   KoContactWithSensor & contact,
-                                   stateObservation::kine::Kinematics & worldContactKineRef);
+  /// @param contact Contact
+  /// @param worldContactKine Contact frame kinematics, which are affected by the deformation of flexiblities.
+  /// @param worldRestPose Rest pose of the contact, updated in the function
+  /// @return The contact rest pose.
+  stateObservation::kine::Kinematics getOdometryWorldContactRest(
+      const mc_control::MCController & ctl,
+      KoContactWithSensor & contact,
+      const stateObservation::kine::Kinematics & worldContactKine);
 
   /// @brief Creates a new contact
   /// @param ctl Controller
@@ -205,6 +208,13 @@ protected:
   void updateContact(const mc_control::MCController & ctl, KoContactWithSensor & contact);
 
 public:
+  inline Eigen::VectorBlock<Eigen::VectorXd, 6> getEstimatedDisturbanceWrench()
+  {
+    return res_.template segment<6>(observer_.unmodeledWrenchIndex());
+  }
+
+  inline const sva::ForceVecd & getUnbiasedEstimatedDisturbanceWrench() { return unbiasedDisturbanceWrench_; }
+
   /** Get robot mass.
    *
    */

@@ -169,10 +169,16 @@ void MCKineticsObserver::configure(const mc_control::MCController & ctl, const m
 
   contactInitCovarianceNewContacts_.setZero();
   contactInitCovarianceNewContacts_flat_.setZero();
-  // if we stick to the control robot's anchor frame, we don't allow the correction of the contacts pose
 
-  contactInitCovarianceNewContacts_.block<3, 3>(0, 0) =
-      (ekfStateProcessVariances("contactPositionInitVarianceNewContacts").operator so::Vector3()).matrix().asDiagonal();
+  // if we stick to the control robot's anchor frame, we put zero covariance on the initial contact positions
+  if(odometryType_ != stateObservation::odometry::OdometryType::None)
+  {
+    contactInitCovarianceNewContacts_.block<3, 3>(0, 0) =
+        (ekfStateProcessVariances("contactPositionInitVarianceNewContacts").operator so::Vector3())
+            .matrix()
+            .asDiagonal();
+  }
+
   contactInitCovarianceNewContacts_.block<3, 3>(3, 3) =
       (ekfStateProcessVariances("contactOriInitVarianceNewContacts").operator so::Vector3()).matrix().asDiagonal();
 
@@ -865,10 +871,13 @@ void MCKineticsObserver::updateContactForceMeasurement(KoContactWithSensor & con
   }
 }
 
-void MCKineticsObserver::getOdometryWorldContactRest(const mc_control::MCController & ctl,
-                                                     KoContactWithSensor & contact,
-                                                     so::kine::Kinematics & worldContactKineRef)
+stateObservation::kine::Kinematics MCKineticsObserver::getOdometryWorldContactRest(
+    const mc_control::MCController & ctl,
+    KoContactWithSensor & contact,
+    const so::kine::Kinematics & worldContactKine)
 {
+  stateObservation::kine::Kinematics worldRestPose;
+
   const auto & robot = ctl.robot(robot_);
   if(!contact.sensorEnabled_)
   {
@@ -877,19 +886,13 @@ void MCKineticsObserver::getOdometryWorldContactRest(const mc_control::MCControl
   }
   const so::Vector3 & contactForceMeas = contact.contactWrenchVector_.segment<3>(0); // retrieving the force measurement
   const so::Vector3 & contactTorqueMeas =
-      contact.contactWrenchVector_.segment<3>(3); // retrieving the torque measurement
 
-  // we get the kinematics of the contact in the real world from the ones of the centroid estimated by the Kinetics
-  // Observer. These kinematics are not the reference kinematics of the contact as they take into account the
-  // visco-elastic model of the contacts.
-  const so::kine::Kinematics worldContactKine = observer_.getGlobalKinematicsOf(contact.fbContactKine_);
-
-  // we get the reference position of the contact by removing the contribution of the visco-elastic model
-  worldContactKineRef.position =
-      worldContactKine.orientation.toMatrix3() * linStiffness_.inverse()
-          * (contactForceMeas
-             + worldContactKine.orientation.toMatrix3().transpose() * linDamping_ * worldContactKine.linVel())
-      + worldContactKine.position();
+      // we get the reference position of the contact by removing the contribution of the visco-elastic model
+      worldRestPose.position =
+          worldContactKine.orientation.toMatrix3() * linStiffness_.inverse()
+              * (contactForceMeas
+                 + worldContactKine.orientation.toMatrix3().transpose() * linDamping_ * worldContactKine.linVel())
+          + worldContactKine.position();
 
   /* We get the reference orientation of the contact by removing the contribution of the visco-elastic model */
   // difference between the reference orientation and the real one, obtained from the visco-elastic model
@@ -912,7 +915,7 @@ void MCKineticsObserver::getOdometryWorldContactRest(const mc_control::MCControl
   Eigen::AngleAxisd flexRotAngleAxis(flexRotAngle, flexRotAxis);
   // matrix representation of the rotation due to the visco-elastic model
   so::Matrix3 flexRotMatrix = so::kine::Orientation(flexRotAngleAxis).toMatrix3();
-  worldContactKineRef.orientation = so::Matrix3(flexRotMatrix.transpose() * worldContactKine.orientation.toMatrix3());
+  worldRestPose.orientation = so::Matrix3(flexRotMatrix.transpose() * worldContactKine.orientation.toMatrix3());
 
   if(odometryType_ == stateObservation::odometry::OdometryType::Flat) // if true, the position odometry is made only
                                                                       // along the x and y axis, the position along z is
@@ -924,8 +927,9 @@ void MCKineticsObserver::getOdometryWorldContactRest(const mc_control::MCControl
     so::kine::Kinematics worldContactKineControl = getContactWorldKinematics(contact, robot, fs);
 
     // the reference altitude of the contact is the one in the control robot
-    worldContactKineRef.position()(2) = 0.0;
+    worldRestPose.position()(2) = 0.0;
   }
+  return worldRestPose;
 }
 
 void MCKineticsObserver::setNewContact(const mc_control::MCController & ctl,
@@ -953,22 +957,22 @@ void MCKineticsObserver::setNewContact(const mc_control::MCController & ctl,
   // measured wrench in the frame of the contact.
   contact.fbContactKine_ = getContactWorldKinematics(contact, inputRobot, fs, &measuredWrench);
 
-  // reference of the contact in the world / floating base of the input robot
-  so::kine::Kinematics worldContactKineRef;
-
   if(odometryType_
      != stateObservation::odometry::OdometryType::None) // the Kinetics Observer performs odometry. The estimated
                                                         // state is used to provide the new contacts references.
   {
-    getOdometryWorldContactRest(ctl, contact, worldContactKineRef);
+    const so::kine::Kinematics worldContactKine = observer_.getGlobalKinematicsOf(contact.fbContactKine_);
+    const so::kine::Kinematics worldContactRestKine = getOdometryWorldContactRest(ctl, contact, worldContactKine);
+    observer_.addContact(worldContactRestKine, initCovariance, contactProcessCovariance_, contact.id(), linStiffness_,
+                         linDamping_, angStiffness_, angDamping_);
   }
   else // we don't perform odometry, the reference pose of the contact is its pose in the control robot
   {
-    worldContactKineRef = getContactWorldKinematics(contact, robot, fs);
+    const so::kine::Kinematics worldContactKine = getContactWorldKinematics(contact, robot, fs);
+    // const so::kine::Kinematics worldContactRestKine = getOdometryWorldContactRest(ctl, contact, worldContactKine);
+    observer_.addContact(worldContactKine, initCovariance, contactProcessCovariance_, contact.id(), linStiffness_,
+                         linDamping_, angStiffness_, angDamping_);
   }
-
-  observer_.addContact(worldContactKineRef, initCovariance, contactProcessCovariance_, contact.id(), linStiffness_,
-                       linDamping_, angStiffness_, angDamping_);
 
   // checks if the sensor is used in the correction of the Kinetics Observer or not
   if(contact.sensorEnabled_)
