@@ -378,6 +378,11 @@ private:
   // linear damping of contacts
   stateObservation::Matrix3 angDamping_;
 
+  sva::ForceVecd disturbanceWrenchOffset_;
+  sva::ForceVecd unbiasedDisturbanceWrench_;
+  bool removeWrenchOffset_;
+  size_t wrenchOffsetIndex_;
+
   // indicates if the debug logs have to be added.
   bool withDebugLogs_ = false;
   stateObservation::Matrix3 contactsPosAverageStateCov_;

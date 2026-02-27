@@ -14,7 +14,7 @@ namespace mc_state_observation
 {
 MCKineticsObserver::MCKineticsObserver(const std::string & type, double dt)
 : mc_observers::Observer(type, dt), maxContacts_(3), maxIMUs_(1), observer_(maxContacts_, maxIMUs_),
-  valinor_(type, dt, true)
+  valinor_(type, dt, true), removeWrenchOffset_(false)
 {
   observer_.setSamplingTime(dt);
 }
@@ -415,6 +415,30 @@ bool MCKineticsObserver::run(const mc_control::MCController & ctl)
       inertiaWaist_.inertia() + observer_.getMass() * so::kine::skewSymmetric2(observer_.getCenterOfMass()())));
 
   res_ = observer_.update();
+
+  unbiasedDisturbanceWrench_.force() =
+      res_.template segment<3>(observer_.unmodeledWrenchIndex()) - disturbanceWrenchOffset_.force();
+  unbiasedDisturbanceWrench_.moment() =
+      res_.template segment<3>(observer_.unmodeledTorqueIndex()) - disturbanceWrenchOffset_.moment();
+
+  if(removeWrenchOffset_)
+  {
+    if(wrenchOffsetIndex_ > 100)
+    {
+      removeWrenchOffset_ = false;
+      mc_rtc::log::info("Disturbance wrench offset removed");
+    }
+
+    auto disturbForce = res_.segment(observer_.unmodeledWrenchIndex(), 3);
+    auto disturbMoment = res_.segment(observer_.unmodeledTorqueIndex(), 3);
+
+    disturbanceWrenchOffset_.force() =
+        disturbanceWrenchOffset_.force() + 0.1 * (disturbForce - disturbanceWrenchOffset_.force());
+    disturbanceWrenchOffset_.moment() =
+        disturbanceWrenchOffset_.moment() + 0.1 * (disturbMoment - disturbanceWrenchOffset_.moment());
+
+    wrenchOffsetIndex_++;
+  }
 
   // Kinematics of the floating base in the real world frame (our estimation goal)
   so::kine::Kinematics mcko_K_0_fb;
@@ -1129,9 +1153,19 @@ void MCKineticsObserver::addToLogger(const mc_control::MCController & ctl,
   logger.addLogEntry(
       category_ + "_MEKF_estimatedState_extTorqueCentr", [this]() -> Eigen::Vector3d
       { return observer_.getCurrentStateVector().segment(observer_.unmodeledTorqueIndex(), observer_.sizeTorque); });
+  logger.addLogEntry(category_ + "_MEKF_estimatedState_unbiasedExtForce",
+                     [this]() -> Eigen::Vector3d { return getUnbiasedEstimatedDisturbanceWrench().force(); });
+  logger.addLogEntry(category_ + "_MEKF_estimatedState_unbiasedExtMoment",
+                     [this]() -> Eigen::Vector3d { return getUnbiasedEstimatedDisturbanceWrench().moment(); });
+
   if(withDebugLogs_)
   {
     logger.addLogEntry(category_ + "_constants_mass", [this]() -> double { return observer_.getMass(); });
+
+    logger.addLogEntry(category_ + "_debug_disturbanceWrenchBias_force",
+                       [this]() -> Eigen::Vector3d & { return disturbanceWrenchOffset_.force(); });
+    logger.addLogEntry(category_ + "_debug_disturbanceWrenchBias_moment",
+                       [this]() -> Eigen::Vector3d & { return disturbanceWrenchOffset_.moment(); });
 
     valinor_.addToLogger(ctl, logger, category + "_" + valinor_.name());
     logger.addLogEntry(category_ + "_debug_estimationState",
@@ -1579,11 +1613,14 @@ void MCKineticsObserver::setOdometryType(const std::string & newOdometryType)
   // valinor_.setOdometryType(odometryType_);
 }
 
-void MCKineticsObserver::addToGUI(const mc_control::MCController &,
+void MCKineticsObserver::addToGUI(const mc_control::MCController & ctl,
                                   mc_rtc::gui::StateBuilder & gui,
                                   const std::vector<std::string> & category)
 {
   using namespace mc_rtc::gui;
+
+  auto & logger = (const_cast<mc_control::MCController &>(ctl)).logger();
+
   // clang-format off
   std::vector<std::string> covsCategory = category;
   covsCategory.insert(covsCategory.end(), {"Covariances"});
@@ -1594,6 +1631,30 @@ void MCKineticsObserver::addToGUI(const mc_control::MCController &,
   processCovsCategory.insert(processCovsCategory.end(), {"Process"});
   std::vector<std::string> sensorCovsCategory = covsCategory;
   sensorCovsCategory.insert(sensorCovsCategory.end(), {"Sensors"});
+ 
+  std::vector<std::string> removeOffsetCategory = category; 
+  removeOffsetCategory.insert(removeOffsetCategory.end(), {"RemoveDisturbanceWrenchOffset"});
+   
+  gui.addPlot(  "Unbiased external wrench",
+    mc_rtc::gui::plot::X( "t",    [&logger]() { return logger.t(); }),
+    mc_rtc::gui::plot::Y("Force x", [this]() { return getUnbiasedEstimatedDisturbanceWrench().force()(0); }, Color::Red),
+    mc_rtc::gui::plot::Y("Force y", [this]() { return getUnbiasedEstimatedDisturbanceWrench().force()(1); }, Color::Blue),
+    mc_rtc::gui::plot::Y("Force z", [this]() { return getUnbiasedEstimatedDisturbanceWrench().force()(2); }, Color::Green),
+    mc_rtc::gui::plot::Y("Moment x", [this]() { return getUnbiasedEstimatedDisturbanceWrench().moment()(0); }, Color::Magenta),
+    mc_rtc::gui::plot::Y("Moment y", [this]() { return getUnbiasedEstimatedDisturbanceWrench().moment()(1); }, Color::Cyan),
+    mc_rtc::gui::plot::Y("Moment z", [this]() { return getUnbiasedEstimatedDisturbanceWrench().moment()(2); }, Color::Black)
+  );
+
+
+
+  gui.addElement({category},
+                        mc_rtc::gui::Button("Remove disturbance wrench offset", [this]() { 
+                          // when clicking the button, the observer initializes the offset with the current disturbance wrench estimation
+                          mc_rtc::log::info("Start removing disturbance wrench offset ");
+
+                          wrenchOffsetIndex_ = 0;
+                          removeWrenchOffset_ = true; disturbanceWrenchOffset_.force() = res_.segment(observer_.unmodeledWrenchIndex(), 3);
+    disturbanceWrenchOffset_.moment() = res_.segment(observer_.unmodeledTorqueIndex(), 3);}));
 
   gui.addElement(initCovsCategory,
             mc_state_observation::gui::make_input_element("Contact pos x", contactInitCovarianceNewContacts_(0,0)),
