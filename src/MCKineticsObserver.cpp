@@ -1069,6 +1069,7 @@ void MCKineticsObserver::updateContacts(const mc_control::MCController & ctl, mc
       removeContactLogEntries(logger, removedContact);
       removeContactMeasurementsLogEntries(logger, removedContact);
     }
+    maintainedContacts_.erase(removedContact.id());
   };
 
   // action to execute when a contact is added to the manager during the run, which happens when the contact detection
