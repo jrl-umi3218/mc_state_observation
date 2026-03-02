@@ -227,9 +227,7 @@ void AttitudeObserver::KalmanFilterConfig::addToGUI(mc_rtc::gui::StateBuilder & 
 
 void AttitudeObserver::KalmanFilterConfig::removeFromGUI(mc_rtc::gui::StateBuilder & gui,
                                                          const std::vector<std::string> & category)
-{
-  gui.removeCategory(category);
-}
+{ gui.removeCategory(category); }
 
 } // namespace mc_state_observation
 EXPORT_OBSERVER_MODULE("Attitude", mc_state_observation::AttitudeObserver)

@@ -47,9 +47,7 @@ inline static OdometryType stringToOdometryType(const std::string & str, const s
 /// @param str The string naming the desired odometry
 /// @return OdometryType
 inline static OdometryType stringToOdometryType(const std::string & str)
-{
-  return internal::strToOdometryType_.at(str);
-}
+{ return internal::strToOdometryType_.at(str); }
 
 /// @brief Returns the string value associated to the given OdometryType object
 /// @details This can be used to display the name of the method in the gui for example. This function assumes the given
@@ -57,9 +55,7 @@ inline static OdometryType stringToOdometryType(const std::string & str)
 /// @param odometryType The current odometry type
 /// @return std::string
 inline static std::string odometryTypeToSstring(OdometryType odometryType)
-{
-  return internal::odometryTypToStr_.at(odometryType);
-}
+{ return internal::odometryTypToStr_.at(odometryType); }
 
 // IMUs can be handled using only a vector containing the IMU objects.
 typedef std::vector<IMU> ImuList;

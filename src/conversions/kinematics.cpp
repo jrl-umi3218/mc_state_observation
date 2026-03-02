@@ -151,9 +151,7 @@ void addToLogger(mc_rtc::Logger & logger, const stateObservation::kine::Kinemati
 }
 
 void removeFromLogger(mc_rtc::Logger & logger, const stateObservation::kine::Kinematics & kine)
-{
-  logger.removeLogEntries(&kine);
-}
+{ logger.removeLogEntries(&kine); }
 
 ///////////////////////////////////////////////////////////////////////
 /// -------------------Kinematics to SVA conversion--------------------

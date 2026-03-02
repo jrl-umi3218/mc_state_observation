@@ -64,9 +64,7 @@ protected:
     struct sortByForce
     {
       inline bool operator()(const LoContactWithSensor & contact1, const LoContactWithSensor & contact2) const noexcept
-      {
-        return (contact1.forceNorm() < contact2.forceNorm());
-      }
+      { return (contact1.forceNorm() < contact2.forceNorm()); }
     };
 
   public:

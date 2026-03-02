@@ -263,8 +263,6 @@ void ContactsManager<ContactT>::findContactsFromSensors(const mc_control::MCCont
                                                         const std::string & robotName,
                                                         OnNewContact & onNewContact,
                                                         OnMaintainedContact & onMaintainedContact)
-{
-  findContactsFromSurfaces(ctl, robotName, onNewContact, onMaintainedContact);
-}
+{ findContactsFromSurfaces(ctl, robotName, onNewContact, onMaintainedContact); }
 
 } // namespace mc_state_observation::measurements

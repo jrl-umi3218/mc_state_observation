@@ -126,18 +126,14 @@ void LeggedOdometryManager::run(const mc_control::MCController & ctl,
                                 mc_rtc::Logger & logger,
                                 sva::PTransformd & pose,
                                 const stateObservation::Matrix3 & tilt)
-{
-  runPvt(ctl, logger, pose, &tilt);
-}
+{ runPvt(ctl, logger, pose, &tilt); }
 
 void LeggedOdometryManager::run(const mc_control::MCController & ctl,
                                 mc_rtc::Logger & logger,
                                 sva::PTransformd & pose,
                                 const stateObservation::Matrix3 & tilt,
                                 sva::MotionVecd & vel)
-{
-  runPvt(ctl, logger, pose, &tilt, &vel);
-}
+{ runPvt(ctl, logger, pose, &tilt, &vel); }
 
 void LeggedOdometryManager::run(const mc_control::MCController & ctl,
                                 mc_rtc::Logger & logger,
@@ -145,9 +141,7 @@ void LeggedOdometryManager::run(const mc_control::MCController & ctl,
                                 const stateObservation::Matrix3 & tilt,
                                 sva::MotionVecd & vel,
                                 sva::MotionVecd & acc)
-{
-  runPvt(ctl, logger, pose, &tilt, &vel, &acc);
-}
+{ runPvt(ctl, logger, pose, &tilt, &vel, &acc); }
 
 void LeggedOdometryManager::runPvt(const mc_control::MCController & ctl,
                                    mc_rtc::Logger & logger,
