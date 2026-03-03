@@ -100,9 +100,7 @@ void ObjectObserver::configure(const mc_control::MCController & controller, cons
 void ObjectObserver::reset(const mc_control::MCController &) {}
 
 bool ObjectObserver::run(const mc_control::MCController &)
-{
-  return true;
-}
+{ return true; }
 
 void ObjectObserver::update(mc_control::MCController & ctl)
 {

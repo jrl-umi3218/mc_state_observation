@@ -55,9 +55,7 @@ protected:
   /// @return ContactT &
   template<typename OnAddedContact = std::nullptr_t>
   inline ContactT & addContactToManager(const std::string & forceSensorName, OnAddedContact onAddedContact = nullptr)
-  {
-    return addContactToManager(forceSensorName, "", onAddedContact);
-  }
+  { return addContactToManager(forceSensorName, "", onAddedContact); }
 
   /// @brief Detects the currently set contacts based on the surfaces given by the user. Applies custom functions for
   /// each estimator on the newly set and maintained contacts.
