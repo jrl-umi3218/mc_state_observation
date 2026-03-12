@@ -35,6 +35,8 @@ struct MCValinor : public TiltObserver
   /// @return stateObservation::kine::Kinematics
   stateObservation::kine::Kinematics applyLastTransformation(const stateObservation::kine::Kinematics & kine);
 
+  stateObservation::odometry::LeggedOdometryManager & odometryManager() noexcept { return odometryManager_; }
+
 protected:
   /*! \brief update the robot pose in the world only for visualization purpose
    *
