@@ -339,13 +339,15 @@ bool MCWaiko::run(const mc_control::MCController & ctl)
 
   if(odometryManager_.maintainedContacts().size() > 0)
   {
-    worldImuLocKineFromAnchor_ = odometryManager_.getWorldBodyLocalKineFromAnchor(true, true);
-    worldImuKineFromAnchor_ = worldImuLocKineFromAnchor_;
+    worldImuLocKineFromAnchor_ = odometryManager_.getWorldBodyLocalKineFromAnchor();
+    if(worldImuLocKineFromAnchor_.orientation.isSet())
+    {
+      estimator_.addPoseInput(worldImuLocKineFromAnchor_.orientation.toMatrix3(), worldImuLocKineFromAnchor_.position(),
+                              k);
+    }
+    else { estimator_.addPosInput(worldImuLocKineFromAnchor_.position(), k); }
 
-    estimator_.addContactInput(
-        so::WaikoHumanoid::InputWaiko::ContactInput(worldImuLocKineFromAnchor_.orientation.toMatrix3(),
-                                                    worldImuLocKineFromAnchor_.position()),
-        k);
+    worldImuKineFromAnchor_ = worldImuLocKineFromAnchor_;
   }
 
   // estimation of the state with the complementary filters
@@ -519,7 +521,7 @@ void MCWaiko::addToLogger(const mc_control::MCController & ctl, mc_rtc::Logger &
     logger.addLogEntry(category + "_debug_corrections_posCorrFromContactPos_",
                        [this]() -> const so::Vector3 & { return estimator_.getPosCorrectionFromContactPos(); });
     logger.addLogEntry(category + "_debug_corrections_oriCorrFromContactPos_",
-                       [this]() -> const so::Vector3 & { return estimator_.geOriCorrectionFromContactPos(); });
+                       [this]() -> const so::Vector3 & { return estimator_.getOriCorrectionFromContactPos(); });
 
     logger.addLogEntry(category + "_realRobotState_x1",
                        [this, &ctl]() -> so::Vector3
