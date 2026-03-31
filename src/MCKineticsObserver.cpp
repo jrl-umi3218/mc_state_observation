@@ -985,10 +985,12 @@ void MCKineticsObserver::setNewContact(const mc_control::MCController & ctl,
      != stateObservation::odometry::OdometryType::None) // the Kinetics Observer performs odometry. The estimated
                                                         // state is used to provide the new contacts references.
   {
-    const so::kine::Kinematics worldContactKine = observer_.getGlobalKinematicsOf(contact.fbContactKine_);
-    const so::kine::Kinematics worldContactRestKine = getOdometryWorldContactRest(ctl, contact, worldContactKine);
-    observer_.addContact(worldContactRestKine, initCovariance, contactProcessCovariance_, contact.id(), linStiffness_,
-                         linDamping_, angStiffness_, angDamping_);
+    so::kine::Kinematics worldContactKine = observer_.getGlobalKinematicsOf(contact.fbContactKine_);
+
+    observer_.addContact(worldContactKine, initCovariance, contactProcessCovariance_, contact.id(), linStiffness_,
+                         linDamping_, angStiffness_, angDamping_, contact.contactWrenchVector_.segment<3>(0),
+                         contact.contactWrenchVector_.segment<3>(3),
+                         odometryType_ == stateObservation::odometry::OdometryType::Flat);
   }
   else // we don't perform odometry, the reference pose of the contact is its pose in the control robot
   {
