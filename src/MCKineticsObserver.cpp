@@ -909,14 +909,14 @@ stateObservation::kine::Kinematics MCKineticsObserver::getOdometryWorldContactRe
                       "but not in the correction made by the Kinetics Observer.");
   }
   const so::Vector3 & contactForceMeas = contact.contactWrenchVector_.segment<3>(0); // retrieving the force measurement
-  const so::Vector3 & contactTorqueMeas =
+  const so::Vector3 & contactTorqueMeas = contact.contactWrenchVector_.segment<3>(3);
 
-      // we get the reference position of the contact by removing the contribution of the visco-elastic model
-      worldRestPose.position =
-          worldContactKine.orientation.toMatrix3() * linStiffness_.inverse()
-              * (contactForceMeas
-                 + worldContactKine.orientation.toMatrix3().transpose() * linDamping_ * worldContactKine.linVel())
-          + worldContactKine.position();
+  // we get the reference position of the contact by removing the contribution of the visco-elastic model
+  worldRestPose.position =
+      worldContactKine.orientation.toMatrix3() * linStiffness_.inverse()
+          * (contactForceMeas
+             + worldContactKine.orientation.toMatrix3().transpose() * linDamping_ * worldContactKine.linVel())
+      + worldContactKine.position();
 
   /* We get the reference orientation of the contact by removing the contribution of the visco-elastic model */
   // difference between the reference orientation and the real one, obtained from the visco-elastic model
