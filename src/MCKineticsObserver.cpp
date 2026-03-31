@@ -47,7 +47,7 @@ void MCKineticsObserver::configure(const mc_control::MCController & ctl, const m
   // we set the desired type of odometry
   auto leggedOdomConfig = config("leggedOdometry");
   std::string typeOfOdometry = static_cast<std::string>(leggedOdomConfig("odometryType"));
-  odometryType_ = stateObservation::odometry::stringToOdometryType(typeOfOdometry);
+  odometryType_ = so::odometry::stringToOdometryType(typeOfOdometry);
 
   config("withDebugLogs", withDebugLogs_);
 
@@ -174,7 +174,7 @@ void MCKineticsObserver::configure(const mc_control::MCController & ctl, const m
   contactInitCovarianceNewContacts_flat_.setZero();
 
   // if we stick to the control robot's anchor frame, we put zero covariance on the initial contact positions
-  if(odometryType_ != stateObservation::odometry::OdometryType::None)
+  if(odometryType_ != so::odometry::OdometryType::None)
   {
     contactInitCovarianceNewContacts_.block<3, 3>(0, 0) =
         (ekfStateProcessVariances("contactPositionInitVarianceNewContacts").operator so::Vector3())
@@ -342,8 +342,6 @@ void MCKineticsObserver::reset(const mc_control::MCController & ctl)
   inertiaWaist_ = mergeMbg.nodeByName(realRobotModule.mb.body(0).name())->body.inertia();
   mass(ctl.realRobot(robot_).mass());
 
-  if(debug_) { mc_rtc::log::info("inertiaWaist = {}", inertiaWaist_); }
-
   /* Initialization of variables */
   X_0_fb_ = sva::PTransformd::Identity();
   v_fb_0_ = sva::MotionVecd::Zero();
@@ -362,6 +360,25 @@ void MCKineticsObserver::reset(const mc_control::MCController & ctl)
   X_0_fb_ = realRobot.posW().translation();
 
   initObserverStateVector(ctl, realRobot);
+}
+
+so::Matrix3 computeCentroidalInertia(const rbd::MultiBody & mb,
+                                     const rbd::MultiBodyConfig & mbc,
+                                     const so::Vector3 & com)
+{
+  using namespace Eigen;
+
+  const std::vector<rbd::Body> & bodies = mb.bodies();
+  sva::RBInertiad Ic;
+
+  sva::PTransformd X_com_0(so::Vector3(-com));
+  for(size_t i = 0; i < static_cast<size_t>(mb.nrBodies()); ++i)
+  {
+    auto X_i_com = mbc.bodyPosW[i] * X_com_0;
+    Ic += X_i_com.transMul(bodies[i].inertia());
+  }
+
+  return Ic.inertia();
 }
 
 bool MCKineticsObserver::run(const mc_control::MCController & ctl)
@@ -395,27 +412,28 @@ bool MCKineticsObserver::run(const mc_control::MCController & ctl)
 
   /** Center of mass (assumes FK, FV and FA are already done)
       Must be initialized now as used for the conversion from user to centroid frame !!! **/
-  worldCoMKine_.position = inputRobot.com();
-  worldCoMKine_.linVel = inputRobot.comVelocity();
-  worldCoMKine_.linAcc = inputRobot.comAcceleration();
+  fbCoMKine_.position = inputRobot.com();
+  fbCoMKine_.linVel = inputRobot.comVelocity();
+  fbCoMKine_.linAcc = inputRobot.comAcceleration();
 
-  observer_.setCenterOfMass(worldCoMKine_.position(), worldCoMKine_.linVel(), worldCoMKine_.linAcc());
-
-  // update of the contacts
-  updateContacts(ctl, logger);
+  observer_.setCenterOfMass(fbCoMKine_.position(), fbCoMKine_.linVel(), fbCoMKine_.linAcc());
 
   // force measurements from sensor that are not associated to a currently set contact are given to the Kinetics
   // Observer as inputs.
   inputAdditionalWrench(ctl, inputRobot, robot);
 
+  observer_.setCoMAngularMomentum(
+      rbd::computeCentroidalMomentum(inputRobot.mb(), inputRobot.mbc(), fbCoMKine_.position()).moment(),
+      rbd::computeCentroidalMomentumDot(inputRobot.mb(), inputRobot.mbc(), fbCoMKine_.position(), fbCoMKine_.linVel())
+          .moment());
+
+  observer_.setCoMInertiaMatrix(computeCentroidalInertia(inputRobot.mb(), inputRobot.mbc(), fbCoMKine_.position));
+
+  // update of the contacts
+  updateContacts(ctl, logger);
+
   /** Accelerometers **/
   updateIMUs(robot, inputRobot);
-
-  observer_.setCoMAngularMomentum(
-      rbd::computeCentroidalMomentum(inputRobot.mb(), inputRobot.mbc(), inputRobot.com()).moment());
-
-  observer_.setCoMInertiaMatrix(so::Matrix3(
-      inertiaWaist_.inertia() + observer_.getMass() * so::kine::skewSymmetric2(observer_.getCenterOfMass()())));
 
   res_ = observer_.update();
 
@@ -543,9 +561,9 @@ bool MCKineticsObserver::run(const mc_control::MCController & ctl)
 
           so::kine::Kinematics newWorldContactKineRef;
 
-          if(odometryType_ != stateObservation::odometry::OdometryType::None) // the Kinetics Observer performs
-                                                                              // odometry. The estimated state is used
-                                                                              // to provide the new contacts references.
+          if(odometryType_ != so::odometry::OdometryType::None) // the Kinetics Observer performs
+                                                                // odometry. The estimated state is used
+                                                                // to provide the new contacts references.
           {
             getOdometryWorldContactRest(ctl, contact, newWorldContactKineRef);
           }
@@ -635,8 +653,7 @@ bool MCKineticsObserver::run(const mc_control::MCController & ctl)
 
         so::kine::Kinematics newWorldContactKineRef;
 
-        if(odometryType_
-           != stateObservation::odometry::OdometryType::None) // the Kinetics Observer performs odometry. The estimated
+        if(odometryType_ != so::odometry::OdometryType::None) // the Kinetics Observer performs odometry. The estimated
                                                               // state is used to provide the new contacts references.
         {
           getOdometryWorldContactRest(ctl, contact, newWorldContactKineRef);
@@ -884,7 +901,7 @@ const so::kine::Kinematics MCKineticsObserver::getContactWorldKinematics(const K
 
 void MCKineticsObserver::updateContactForceMeasurement(KoContactWithSensor & contact,
                                                        const sva::ForceVecd & measuredWrench,
-                                                       const stateObservation::kine::Kinematics * contactSensorKine)
+                                                       const so::kine::Kinematics * contactSensorKine)
 {
   if(contactSensorKine == nullptr)
   {
@@ -904,12 +921,11 @@ void MCKineticsObserver::updateContactForceMeasurement(KoContactWithSensor & con
   }
 }
 
-stateObservation::kine::Kinematics MCKineticsObserver::getOdometryWorldContactRest(
-    const mc_control::MCController & ctl,
-    KoContactWithSensor & contact,
-    const so::kine::Kinematics & worldContactKine)
+so::kine::Kinematics MCKineticsObserver::getOdometryWorldContactRest(const mc_control::MCController & ctl,
+                                                                     KoContactWithSensor & contact,
+                                                                     const so::kine::Kinematics & worldContactKine)
 {
-  stateObservation::kine::Kinematics worldRestPose;
+  so::kine::Kinematics worldRestPose;
 
   const auto & robot = ctl.robot(robot_);
   if(!contact.sensorEnabled_)
@@ -953,9 +969,9 @@ stateObservation::kine::Kinematics MCKineticsObserver::getOdometryWorldContactRe
   so::Matrix3 flexRotMatrix = so::kine::Orientation(flexRotAngleAxis).toMatrix3();
   worldRestPose.orientation = so::Matrix3(flexRotMatrix.transpose() * worldContactKine.orientation.toMatrix3());
 
-  if(odometryType_ == stateObservation::odometry::OdometryType::Flat) // if true, the position odometry is made only
-                                                                      // along the x and y axis, the position along z is
-                                                                      // assumed to be the one of the control robot
+  if(odometryType_ == so::odometry::OdometryType::Flat) // if true, the position odometry is made only
+                                                        // along the x and y axis, the position along z is
+                                                        // assumed to be the one of the control robot
   {
     const mc_rbdyn::ForceSensor & fs = robot.forceSensor(contact.fsName_);
 
@@ -993,16 +1009,14 @@ void MCKineticsObserver::setNewContact(const mc_control::MCController & ctl,
   // measured wrench in the frame of the contact.
   contact.fbContactKine_ = getContactWorldKinematics(contact, inputRobot, fs, &measuredWrench);
 
-  if(odometryType_
-     != stateObservation::odometry::OdometryType::None) // the Kinetics Observer performs odometry. The estimated
+  if(odometryType_ != so::odometry::OdometryType::None) // the Kinetics Observer performs odometry. The estimated
                                                         // state is used to provide the new contacts references.
   {
     so::kine::Kinematics worldContactKine = observer_.getGlobalKinematicsOf(contact.fbContactKine_);
 
     observer_.addContact(worldContactKine, initCovariance, contactProcessCovariance_, contact.id(), linStiffness_,
                          linDamping_, angStiffness_, angDamping_, contact.contactWrenchVector_.segment<3>(0),
-                         contact.contactWrenchVector_.segment<3>(3),
-                         odometryType_ == stateObservation::odometry::OdometryType::Flat);
+                         contact.contactWrenchVector_.segment<3>(3), odometryType_ == so::odometry::OdometryType::Flat);
   }
   else // we don't perform odometry, the reference pose of the contact is its pose in the control robot
   {
@@ -1071,7 +1085,7 @@ void MCKineticsObserver::updateContacts(const mc_control::MCController & ctl, mc
   if(observer_.getNumberOfSetContacts() > 0) // The initial covariance on the pose of the contact depending on
                                              // whether another contact is already set or not
   {
-    if(odometryType_ == stateObservation::odometry::OdometryType::Flat)
+    if(odometryType_ == so::odometry::OdometryType::Flat)
     {
       // we compute again the following matrix as contactInitCovarianceNewContacts_ can be updated.
       contactInitCovarianceNewContacts_flat_.diagonal() = contactInitCovarianceNewContacts_.diagonal();
@@ -1086,7 +1100,7 @@ void MCKineticsObserver::updateContacts(const mc_control::MCController & ctl, mc
   }
   else
   {
-    if(odometryType_ == stateObservation::odometry::OdometryType::Flat)
+    if(odometryType_ == so::odometry::OdometryType::Flat)
     {
       contactInitCovarianceFirstContacts_flat_.diagonal() = contactInitCovarianceFirstContacts_.diagonal();
       contactInitCovarianceFirstContacts_flat_(2, 2) = 0.0;
@@ -1209,8 +1223,7 @@ void MCKineticsObserver::addToLogger(const mc_control::MCController & ctl,
                          return "default";
                        });
     logger.addLogEntry(category_ + "_debug_config_OdometryType",
-                       [this]() -> std::string
-                       { return stateObservation::odometry::odometryTypeToString(odometryType_); });
+                       [this]() -> std::string { return so::odometry::odometryTypeToString(odometryType_); });
 
     logger.addLogEntry(category_ + "_debug_config_withAdaptativeContactProcessCov",
                        [this]() -> std::string
@@ -1624,7 +1637,7 @@ void MCKineticsObserver::removeFromLogger(mc_rtc::Logger & logger, const std::st
 void MCKineticsObserver::setOdometryType(const std::string & newOdometryType)
 {
   prevOdometryType_ = odometryType_;
-  odometryType_ = stateObservation::odometry::stringToOdometryType(newOdometryType);
+  odometryType_ = so::odometry::stringToOdometryType(newOdometryType);
 
   // if the type didn't change, we stop the function here
   if(odometryType_ == prevOdometryType_) { return; }
@@ -1698,14 +1711,14 @@ void MCKineticsObserver::addToGUI(const mc_control::MCController & ctl,
             mc_state_observation::gui::make_input_element("Torque y", contactSensorCovariance_(4,4)),
             mc_state_observation::gui::make_input_element("Torque z", contactSensorCovariance_(5,5)));
 
-  if(odometryType_ != stateObservation::odometry::OdometryType::None)
+  if(odometryType_ != so::odometry::OdometryType::None)
   {
     std::vector<std::string> odomCategory = category;
     odomCategory.insert(odomCategory.end(), {"Odometry"});
     gui.addElement({odomCategory}, mc_rtc::gui::ComboInput(
-                                                                  "Choose from list",  {stateObservation::odometry::odometryTypeToString(stateObservation::odometry::OdometryType::Odometry6d), stateObservation::odometry::odometryTypeToString(stateObservation::odometry::OdometryType::Flat)},
+                                                                  "Choose from list",  {so::odometry::odometryTypeToString(so::odometry::OdometryType::Odometry6d), so::odometry::odometryTypeToString(so::odometry::OdometryType::Flat)},
                                                                   [this]() -> std::string {
-                                                                    return stateObservation::odometry::odometryTypeToString(odometryType_);
+                                                                    return so::odometry::odometryTypeToString(odometryType_);
                                                                   },
                                                                   [this](const std::string & typeOfOdometry) {
                                                                     setOdometryType(typeOfOdometry);

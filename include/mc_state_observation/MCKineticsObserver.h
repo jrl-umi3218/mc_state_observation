@@ -464,8 +464,8 @@ private:
   sva::PTransformd zeroPose_;
   // zero velocity or acceleration
   sva::MotionVecd zeroMotion_;
-  // kinematics of the CoM within the world frame of the input robot
-  stateObservation::kine::Kinematics worldCoMKine_;
+  // kinematics of the CoM within the floating base
+  stateObservation::kine::Kinematics fbCoMKine_;
   /**< grouped inertia */
   sva::RBInertiad inertiaWaist_;
   // total force measured by the sensors that are not associated to a currently set contact and expressed in the
