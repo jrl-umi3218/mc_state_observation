@@ -13,8 +13,9 @@ namespace so = stateObservation;
 using OdometryType = stateObservation::odometry::OdometryType;
 
 MCValinor::MCValinor(const std::string & type, double dt, bool asBackup)
-: TiltObserver(type, dt), odometryManager_(dt), asBackup_(asBackup)
+: TiltObserver(type, dt), odometryManager_(), asBackup_(asBackup)
 {
+  odometryManager_.setSamplingTime(dt);
 }
 
 void MCValinor::configure(const mc_control::MCController & ctl, const mc_rtc::Configuration & config)
@@ -275,11 +276,8 @@ bool MCValinor::run(const mc_control::MCController & ctl)
 
   odometryManager_.initLoop(contactList, contactUpdateFunctions, &velW_.linear(), &velW_.angular());
 
-  stateObservation::kine::Kinematics imuImuKine_ = stateObservation::kine::Kinematics::zeroKinematics(
-      stateObservation::kine::Kinematics::Flags::pose | stateObservation::kine::Kinematics::Flags::vel);
-
   // position and linear velocity of the anchor point in the frame of the IMU.
-  imuAnchorKine_ = odometryManager_.getAnchorKineIn(imuImuKine_);
+  imuAnchorKine_ = odometryManager_.getAnchorKineInBody(true);
   stateObservation::kine::Kinematics imuWorldKine = worldImuKine_.getInverse();
   worldAnchorKine_ = odometryManager_.getAnchorKineIn(imuWorldKine);
 
@@ -532,7 +530,8 @@ void MCValinor::addToLogger(const mc_control::MCController & ctl, mc_rtc::Logger
     logger.addLogEntry(category + "_constants_gains_beta", [this]() -> double { return estimator_.getBeta(); });
     logger.addLogEntry(category + "_constants_gains_gamma", [this]() -> double { return gamma_; });
 
-    logger.addLogEntry(category + "_debug_OdometryType", [this]() -> std::string
+    logger.addLogEntry(category + "_debug_OdometryType",
+                       [this]() -> std::string
                        { return stateObservation::odometry::odometryTypeToString(odometryManager_.odometryType_); });
 
     logger.addLogEntry(category + "_debug_yv", [this]() -> const so::Vector3 & { return yv_; });
@@ -683,7 +682,8 @@ void MCValinor::addToLogger(const mc_control::MCController & ctl, mc_rtc::Logger
                          return worldImuKine.linVel();
                        });
 
-    logger.addLogEntry(category + "_debug_contactDetected", [this]() -> std::string
+    logger.addLogEntry(category + "_debug_contactDetected",
+                       [this]() -> std::string
                        { return odometryManager_.contactsManager().contactsDetected() ? "contacts" : "no contacts"; });
 
     logger.addLogEntry(category + "_debug_ctlBodyVel",

@@ -13,9 +13,10 @@ namespace so = stateObservation;
 using OdometryType = stateObservation::odometry::OdometryType;
 
 MCWaiko::MCWaiko(const std::string & type, double dt, bool asBackup)
-: mc_observers::Observer(type, dt), estimator_(dt, alpha_, beta_, 1 / (2 * M_PI), rho_, mu_), odometryManager_(dt)
+: mc_observers::Observer(type, dt), estimator_(alpha_, beta_, 1 / (2 * M_PI), rho_, mu_), odometryManager_()
 {
   asBackup_ = asBackup;
+  odometryManager_.setSamplingTime(dt);
 }
 
 void MCWaiko::configure(const mc_control::MCController & ctl, const mc_rtc::Configuration & config)
@@ -228,26 +229,29 @@ bool MCWaiko::run(const mc_control::MCController & ctl)
     if(withDebugLogs_)
     {
       conversions::kinematics::addToLogger(logger, newContact.worldRefKine_,
-                                           "Waiko_contacts_" + newContact.surfaceName() + "_refPose");
+                                           name() + "_contacts_" + newContact.surfaceName() + "_refPose");
       conversions::kinematics::addToLogger(logger, newContact.worldBodyKineFromRef_,
-                                           "Waiko_contacts_" + newContact.surfaceName() + "_worldImuKineFromRef");
+                                           name() + "_contacts_" + newContact.surfaceName() + "_worldImuKineFromRef");
       conversions::kinematics::addToLogger(logger, newContact.currentWorldKine_,
-                                           "Waiko_contacts_" + newContact.surfaceName() + "_currentWorldContactKine");
+                                           name() + "_contacts_" + newContact.surfaceName()
+                                               + "_currentWorldContactKine");
       conversions::kinematics::addToLogger(logger, newContact.bodyContactKine_,
-                                           "Waiko_contacts_" + newContact.surfaceName() + "_bodyContactKine_");
+                                           name() + "_contacts_" + newContact.surfaceName() + "_bodyContactKine_");
       conversions::kinematics::addToLogger(logger, newContact.worldRefKineBeforeCorrection_,
-                                           "Waiko_contacts_" + newContact.surfaceName() + "_refPoseBeforeCorrection");
+                                           name() + "_contacts_" + newContact.surfaceName()
+                                               + "_refPoseBeforeCorrection");
       conversions::kinematics::addToLogger(logger, newContact.newIncomingWorldRefKine_,
-                                           "Waiko_contacts_" + newContact.surfaceName() + "_newIncomingWorldRefKine");
+                                           name() + "_contacts_" + newContact.surfaceName()
+                                               + "_newIncomingWorldRefKine");
 
-      logger.addLogEntry("Waiko_contacts_" + newContact.surfaceName() + "_isSet", &newContact,
+      logger.addLogEntry(name() + "_contacts_" + newContact.surfaceName() + "_isSet", &newContact,
                          [&newContact]() -> std::string { return newContact.isSet() ? "Set" : "notSet"; });
 
-      logger.addLogEntry("Waiko_contacts_" + newContact.surfaceName() + "_lambda", &newContact,
+      logger.addLogEntry(name() + "_contacts_" + newContact.surfaceName() + "_lambda", &newContact,
                          [&newContact]() -> double { return newContact.lambda(); });
-      logger.addLogEntry("Waiko_contacts_" + newContact.surfaceName() + "_lifeTime", &newContact,
+      logger.addLogEntry(name() + "_contacts_" + newContact.surfaceName() + "_lifeTime", &newContact,
                          [&newContact]() -> double { return newContact.lifeTime(); });
-      logger.addLogEntry("Waiko_contacts_" + newContact.surfaceName() + "_correctionWeightingCoeff", &newContact,
+      logger.addLogEntry(name() + "_contacts_" + newContact.surfaceName() + "_correctionWeightingCoeff", &newContact,
                          [&newContact]() -> double { return newContact.correctionWeightingCoeff(); });
     }
   };
@@ -293,13 +297,10 @@ bool MCWaiko::run(const mc_control::MCController & ctl)
                                     .onMaintainedContact(onMaintainedContactOdom)
                                     .onRemovedContact(onRemovedContactOdom);
 
-  odometryManager_.initLoop(contactList, contactUpdateFunctions, &velW_.linear(), &velW_.angular());
-
-  stateObservation::kine::Kinematics imuImuKine_ = stateObservation::kine::Kinematics::zeroKinematics(
-      stateObservation::kine::Kinematics::Flags::pose | stateObservation::kine::Kinematics::Flags::vel);
+  odometryManager_.initLoop(contactList, contactUpdateFunctions, nullptr, nullptr);
 
   // position and linear velocity of the anchor point in the frame of the IMU.
-  imuAnchorKine_ = odometryManager_.getAnchorKineIn(imuImuKine_);
+  imuAnchorKine_ = odometryManager_.getAnchorKineInBody(true);
   stateObservation::kine::Kinematics imuWorldKine = worldImuKine_.getInverse();
   worldAnchorKine_ = odometryManager_.getAnchorKineIn(imuWorldKine);
 
@@ -335,7 +336,7 @@ bool MCWaiko::run(const mc_control::MCController & ctl)
     yv_ = -imu.angularVelocity().cross(imuAnchorKine_.position()) - imuAnchorKine_.linVel();
   }
 
-  estimator_.setInput(yv_, imu.linearAcceleration(), imu.angularVelocity(), k, false);
+  estimator_.setInput(dt_, yv_, imu.linearAcceleration(), imu.angularVelocity(), k, false);
 
   if(odometryManager_.maintainedContacts().size() > 0)
   {
@@ -345,7 +346,10 @@ bool MCWaiko::run(const mc_control::MCController & ctl)
       estimator_.addPoseInput(worldImuLocKineFromAnchor_.orientation.toMatrix3(), worldImuLocKineFromAnchor_.position(),
                               k);
     }
-    else { estimator_.addPosInput(worldImuLocKineFromAnchor_.position(), k); }
+    else
+    {
+      estimator_.addPosInput(worldImuLocKineFromAnchor_.position(), k);
+    }
 
     worldImuKineFromAnchor_ = worldImuLocKineFromAnchor_;
   }
@@ -576,7 +580,8 @@ void MCWaiko::addToLogger(const mc_control::MCController & ctl, mc_rtc::Logger &
     logger.addLogEntry(category + "_constants_gains_gamma", [this]() -> double { return gamma_; });
     logger.addLogEntry(category + "_constants_gains_rho", [this]() -> double { return estimator_.getRho(); });
 
-    logger.addLogEntry(category + "_debug_OdometryType", [this]() -> std::string
+    logger.addLogEntry(category + "_debug_OdometryType",
+                       [this]() -> std::string
                        { return stateObservation::odometry::odometryTypeToString(odometryManager_.odometryType_); });
 
     logger.addLogEntry(category + "_debug_yv", [this]() -> const so::Vector3 & { return yv_; });
@@ -727,7 +732,8 @@ void MCWaiko::addToLogger(const mc_control::MCController & ctl, mc_rtc::Logger &
                          return worldImuKine.linVel();
                        });
 
-    logger.addLogEntry(category + "_debug_contactDetected", [this]() -> std::string
+    logger.addLogEntry(category + "_debug_contactDetected",
+                       [this]() -> std::string
                        { return odometryManager_.contactsManager().contactsDetected() ? "contacts" : "no contacts"; });
 
     logger.addLogEntry(category + "_debug_ctlBodyVel",
