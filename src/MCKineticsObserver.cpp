@@ -313,33 +313,6 @@ void MCKineticsObserver::reset(const mc_control::MCController & ctl)
 
   const auto & robot = ctl.robot(robot_);
   const auto & realRobot = ctl.realRobot(robot_);
-  const auto & realRobotModule = realRobot.module();
-
-  rbd::MultiBodyGraph mergeMbg(realRobotModule.mbg);
-  std::map<std::string, std::vector<double>> jointPosByName;
-  for(int i = 0; i < realRobotModule.mb.nrJoints(); ++i)
-  {
-    auto jointName = realRobotModule.mb.joint(i).name();
-    auto jointIndex = static_cast<unsigned long>(realRobotModule.mb.jointIndexByName(jointName));
-    jointPosByName[jointName] = realRobotModule.mbc.q[jointIndex];
-  }
-
-  std::vector<std::string> rootJoints = {};
-  int nbJoints = static_cast<int>(realRobot.mb().joints().size());
-  for(int i = 0; i < nbJoints; ++i)
-  {
-    if(realRobot.mb().predecessor(i) == 0) { rootJoints.push_back(realRobot.mb().joint(i).name()); }
-  }
-  for(const auto & joint : rootJoints)
-  {
-    if(!realRobot.hasJoint(joint))
-    {
-      mc_rtc::log::error_and_throw<std::runtime_error>("Robot does not have a joint named {}", joint);
-    }
-    mergeMbg.mergeSubBodies(realRobotModule.mb.body(0).name(), joint, jointPosByName);
-  }
-
-  inertiaWaist_ = mergeMbg.nodeByName(realRobotModule.mb.body(0).name())->body.inertia();
   mass(ctl.realRobot(robot_).mass());
 
   /* Initialization of variables */
@@ -583,14 +556,14 @@ bool MCKineticsObserver::run(const mc_control::MCController & ctl)
       // an error was just detected, we reset the state vector and covariances and start the invicibility frame, during
       // which we let the Kinetics Observer converge before using it again.
       auto & logger = (const_cast<mc_control::MCController &>(ctl)).logger();
-      if(logger.t() / ctl.timeStep < fbBackupCapacity_)
+      if(logger.t() / ctl.timeStep < double(fbBackupCapacity_))
       {
         mc_rtc::log::warning("The backup function was called before the required time was ellapsed. The backup will be "
                              "performed using the last {} seconds",
                              logger.t());
       }
 
-      if(logger.t() / ctl.timeStep - lastBackupIter_ < fbBackupCapacity_)
+      if(logger.t() / ctl.timeStep - lastBackupIter_ < double(fbBackupCapacity_))
       {
         mc_rtc::log::warning("The backup function was called again too quickly. The backup will be "
                              "performed using the last {} seconds",
@@ -827,7 +800,7 @@ void MCKineticsObserver::updateIMUs(const mc_rbdyn::Robot & measRobot, const mc_
     so::kine::Kinematics worldImuKine = worldBodyKine * bodyImuKine;
 
     observer_.setIMU(imu.linearAcceleration(), imu.angularVelocity(), acceleroSensorCovariance_, gyroSensorCovariance_,
-                     worldImuKine, i);
+                     worldImuKine, so::Index(i));
   }
 }
 

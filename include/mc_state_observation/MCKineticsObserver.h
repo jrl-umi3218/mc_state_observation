@@ -466,8 +466,6 @@ private:
   sva::MotionVecd zeroMotion_;
   // kinematics of the CoM within the floating base
   stateObservation::kine::Kinematics fbCoMKine_;
-  /**< grouped inertia */
-  sva::RBInertiad inertiaWaist_;
   // total force measured by the sensors that are not associated to a currently set contact and expressed in the
   // floating base's frame. Used as an input for the Kinetics Observer.
   stateObservation::Vector3 additionalUserResultingForce_ = stateObservation::Vector3::Zero();
@@ -479,7 +477,7 @@ private:
   // iteration on which the backup was required for the last time
   int lastBackupIter_;
   // number of iterations on which we perform the backup
-  int fbBackupCapacity_ = 0;
+  size_t fbBackupCapacity_ = 0;
   // time during which the Kinetics Observer is still getting updated by Valinor after the need of a backup,
   // so the Kalman Filter has time to converge again
   int invincibilityFrame_ = 0;
