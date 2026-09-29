@@ -1,3 +1,9 @@
+mc-state-observation (1.1.2-1debian1) unstable; urgency=medium
+
+  * New release: version 1.1.2
+
+ -- Arnaud TANGUY <arn.tanguy@gmail.com>  Tue, 29 Sep 2026 15:16:43 +0200
+
 mc-state-observation (1.1.1-1debian1) unstable; urgency=medium
 
   * Packaging fixes
