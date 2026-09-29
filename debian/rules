@@ -19,3 +19,6 @@ export LD_LIBRARY_PATH:=/opt/ros/${ROS_DISTRO}/lib/x86_64-linux-gnu:/opt/ros/${R
 
 %:
 	dh $@ --parallel
+
+override_dh_auto_configure:
+	dh_auto_configure -- -DFETCHCONTENT_FULLY_DISCONNECTED=OFF
