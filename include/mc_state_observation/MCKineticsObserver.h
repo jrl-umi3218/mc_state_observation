@@ -10,6 +10,7 @@
 #include <state-observation/dynamics-estimators/kinetics-observer.hpp>
 #include <state-observation/tools/measurements-manager/IMU.hpp>
 #include <string_view>
+#include <unordered_map>
 
 namespace mc_state_observation
 {
@@ -56,8 +57,12 @@ public:
 
 struct KoContactsManager : public stateObservation::measurements::ContactsManager<KoContactWithSensor>
 {
-  // map that relates a force sensor to the associated surface
-  std::unordered_map<std::string, std::string> fs_Surface_Map;
+  void reset()
+  {
+    for(auto & [_, contact] : listContacts_) { contact.resetContact(); }
+    currentContactsList_.clear();
+    contactsDetected_ = false;
+  }
 };
 
 struct MCKineticsObserver : public mc_observers::Observer
@@ -196,26 +201,13 @@ protected:
   //                                                              fbContactPose);
 
   /// @brief Updates the measurements of the force sensor attached to a contact.
-  /// @details Expresses the measured wrench in the frame of the contact. The sensor is generally not directly
-  /// attached to the contact, so the transformation from the sensor to the contact might be necessary.
+  /// @details Expresses the measured wrench in the frame of the contact.
   /// @param contact Contact associated to the sensor
   /// @param measuredWrench measured wrench
-  /// @param surfaceSensorKine transformation from the sensor to the contact.
-  void updateContactForceMeasurement(KoContactWithSensor & contact,
-                                     const sva::ForceVecd & measuredWrench,
-                                     const stateObservation::kine::Kinematics * contactSensorKine = nullptr);
+  void updateContactForceMeasurement(KoContactWithSensor & contact, const sva::ForceVecd & measuredWrench);
 
-  /// @brief Computes the rest pose of the contact in the world.
-  /// @details At contact detection, a wrench is already applied, which means the contact frame obtained by forward
-  /// kinematics is not the rest pose. We thus remove it using the viscoelastic model and the measured wrench.
-  /// @param ctl Controller
-  /// @param contact Contact
-  /// @param worldContactKine Contact frame kinematics, which are affected by the deformation of flexiblities.
-  /// @param worldRestPose Rest pose of the contact, updated in the function
-  /// @return The contact rest pose.
-  stateObservation::kine::Kinematics getOdometryWorldContactRest(
-      KoContactWithSensor & contact,
-      const stateObservation::kine::Kinematics & worldContactKine);
+  /// @brief Returns the sensor wrench covariance expressed at the contact origin in the contact frame.
+  stateObservation::Matrix6 contactWrenchCovariance(const KoContactWithSensor & contact) const;
 
   /// @brief Creates a new contact
   /// @param ctl Controller
@@ -304,9 +296,6 @@ private:
   stateObservation::KineticsObserver observer_;
   // instance of the Tilt Observer used as a backup
   MCValinor valinor_;
-
-  // contacts maintained during the current iteration
-  std::unordered_map<unsigned, KoContactWithSensor *> maintainedContacts_;
 
   enum EstimationState
   {
@@ -431,6 +420,7 @@ private:
   KoContactsDetector contactsDetector_;
 
   KoContactsManager contactsManager_;
+  std::unordered_map<std::string, sva::ForceVecd> forceSensorMeasurements_;
 
   /* IMU variables */
   // manager for the IMUs

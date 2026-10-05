@@ -299,7 +299,7 @@ bool MCWaiko::run(const mc_control::MCController & ctl)
     logger.removeLogEntries(&removedContact);
   };
 
-  std::unordered_set<std::string> & contactList = contactsDetector_.updateContacts(ctl, robot_);
+  std::set<std::string> & contactList = contactsDetector_.updateContacts(ctl, robot_);
   auto contactUpdateFunctions = stateObservation::odometry::LeggedOdometryManager::ContactUpdateFunctions()
                                     .onAddedContact(onAddedContactOdom)
                                     .onNewContact(onNewContactOdom)
@@ -312,6 +312,11 @@ bool MCWaiko::run(const mc_control::MCController & ctl)
   imuAnchorKine_ = odometryManager_.getAnchorKineInBody(true);
   stateObservation::kine::Kinematics imuWorldKine = worldImuKine_.getInverse();
   worldAnchorKine_ = odometryManager_.getAnchorKineIn(imuWorldKine);
+  if(odometryManager_.odometryType_ == OdometryType::None && odometryManager_.maintainedContacts().size() > 0)
+  {
+    stateObservation::kine::Kinematics imuFbKine = fbImuKine_.getInverse();
+    fbAnchorPos_ = odometryManager_.getAnchorKineIn(imuFbKine).position();
+  }
 
   const auto & imu = ctl.robot(robot_).bodySensor(imuSensor_);
 
@@ -414,7 +419,6 @@ void MCWaiko::updatePoseAndVel(const mc_control::MCController & ctl)
     if(odometryManager_.maintainedContacts().size() > 0)
     {
       ctlWorldAnchorPos_.setZero();
-      fbAnchorPos_.setZero();
 
       for(auto contact : odometryManager_.maintainedContacts())
       {
@@ -435,8 +439,6 @@ void MCWaiko::updatePoseAndVel(const mc_control::MCController & ctl)
         // stateObservation::kine::Kinematics ctlFbContactPos_ = ctlWorldFbKine.getInverse() * ctlWorldContactKine;
 
         ctlWorldAnchorPos_ += ctlWorldContactKine.position() * contact->lambda_;
-        stateObservation::kine::Kinematics imuFbKine = fbImuKine_.getInverse();
-        fbAnchorPos_ = odometryManager_.getAnchorKineIn(imuFbKine).position();
       }
     }
 

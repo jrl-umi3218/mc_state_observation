@@ -75,14 +75,15 @@ void ContactsDetector<ContactT>::init_manager(const mc_control::MCController &,
 }
 
 template<typename ContactT>
-std::unordered_set<std::string> & ContactsDetector<ContactT>::updateContacts(const mc_control::MCController & ctl,
-                                                                             const std::string & robotName)
+std::set<std::string> & ContactsDetector<ContactT>::updateContacts(const mc_control::MCController & ctl,
+                                                                   const std::string & robotName)
 {
   for(auto it = latestContactList_.begin(); it != latestContactList_.end();)
   {
-    const std::string & fsName = ctl.robot(robotName).frame(*it).forceSensor().name();
+    const auto & robot = ctl.robot(robotName);
+    const std::string fsName = contactsDetectionMethod_ == Sensors ? *it : robot.frame(*it).forceSensor().name();
 
-    if(ctl.robot(robotName).forceSensor(fsName).wrenchWithoutGravity(ctl.realRobot(robotName)).force().z()
+    if(robot.forceSensor(fsName).wrenchWithoutGravity(ctl.realRobot(robotName)).force().z()
        <= schmittTrigger_.lowerThreshold)
     {
       it = latestContactList_.erase(it); // returns next iterator
