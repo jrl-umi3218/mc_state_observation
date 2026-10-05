@@ -1693,10 +1693,10 @@ void MCKineticsObserver::addToGUI(const mc_control::MCController & ctl,
     processCovsCategory.insert(processCovsCategory.end(), {"Process"});
     std::vector<std::string> sensorCovsCategory = covsCategory;
     sensorCovsCategory.insert(sensorCovsCategory.end(), {"Sensors"});
-  
-    std::vector<std::string> removeOffsetCategory = category; 
+
+    std::vector<std::string> removeOffsetCategory = category;
     removeOffsetCategory.insert(removeOffsetCategory.end(), {"RemoveDisturbanceWrenchOffset"});
-    
+
     gui.addPlot(  "Unbiased external wrench",
       mc_rtc::gui::plot::X( "t",    [&logger]() { return logger.t(); }),
       mc_rtc::gui::plot::Y("Force x", [this]() { return getUnbiasedEstimatedDisturbanceWrench().force()(0); }, Color::Red),
@@ -1710,7 +1710,7 @@ void MCKineticsObserver::addToGUI(const mc_control::MCController & ctl,
 
 
     gui.addElement({category},
-                          mc_rtc::gui::Button("Remove disturbance wrench offset", [this]() { 
+                          mc_rtc::gui::Button("Remove disturbance wrench offset", [this]() {
                             // when clicking the button, the observer initializes the offset with the current disturbance wrench estimation
                             mc_rtc::log::info("Start removing disturbance wrench offset ");
 
@@ -1752,8 +1752,8 @@ void MCKineticsObserver::addToGUI(const mc_control::MCController & ctl,
                                                                     [this](const std::string & typeOfOdometry) {
                                                                       setOdometryType(typeOfOdometry);
                                                                     }));
-    } 
-  } 
+    }
+  }
 }
 
 void MCKineticsObserver::addContactToGui(const mc_control::MCController & ctl,
@@ -2004,7 +2004,7 @@ void MCKineticsObserver::addContactLogEntries(const mc_control::MCController & c
 
   }
 
-  conversions::kinematics::addToLogger(logger, contact.fbContactKine_, category_ + "_debug_contactKine_" + contact.surfaceName() + "_fbContactKine"); 
+  conversions::kinematics::addToLogger(logger, contact.fbContactKine_, category_ + "_debug_contactKine_" + contact.surfaceName() + "_fbContactKine");
 
   conversions::kinematics::addToLogger(logger, contact.contactSensorKine_,
                                        category_ + "_debug_contactKine_" + contact.surfaceName() + "_contactSensorKine");
@@ -2025,11 +2025,11 @@ void MCKineticsObserver::addContactLogEntries(const mc_control::MCController & c
   logger.addLogEntry(
       category_ + "_debug_contactKine_" + contact.surfaceName() + "_inputCentroidContactKine_angVel", &contact,
       [this, &contact]() -> Eigen::Vector3d { return observer_.getCentroidContactInputKine(contact.id()).angVel(); });
-      
+
   logger.addLogEntry(
       category_ + "_debug_contactKine_" + contact.surfaceName() + "_realRobot_position", &contact,
       [this, &contact, &ctl]() -> Eigen::Vector3d
-      { 
+      {
         const auto & realRobot = ctl.realRobot(robot_);
         return getContactWorldKinematics(ctl, contact, realRobot, false).position();
       });
@@ -2177,7 +2177,7 @@ void MCKineticsObserver::removeContactLogEntries(mc_rtc::Logger & logger, const 
 {
   logger.removeLogEntries(&contact);
   removeContactMeasurementsLogEntries(logger, contact);
-  conversions::kinematics::removeFromLogger(logger, contact.fbContactKine_ ); 
+  conversions::kinematics::removeFromLogger(logger, contact.fbContactKine_ );
   conversions::kinematics::removeFromLogger(logger, contact.contactSensorKine_);
 }
 

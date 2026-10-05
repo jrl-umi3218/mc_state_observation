@@ -62,17 +62,13 @@ template<typename ContactT>
 void ContactsDetector<ContactT>::init_manager(const mc_control::MCController &,
                                               const std::string &,
                                               const ContactsDetectorSensorsConfiguration &)
-{
-  contactsDetectionMethod_ = Sensors;
-}
+{ contactsDetectionMethod_ = Sensors; }
 
 template<typename ContactT>
 void ContactsDetector<ContactT>::init_manager(const mc_control::MCController &,
                                               const std::string &,
                                               const ContactsDetectorSolverConfiguration &)
-{
-  contactsDetectionMethod_ = Solver;
-}
+{ contactsDetectionMethod_ = Solver; }
 
 template<typename ContactT>
 std::set<std::string> & ContactsDetector<ContactT>::updateContacts(const mc_control::MCController & ctl,
@@ -88,7 +84,10 @@ std::set<std::string> & ContactsDetector<ContactT>::updateContacts(const mc_cont
     {
       it = latestContactList_.erase(it); // returns next iterator
     }
-    else { ++it; }
+    else
+    {
+      ++it;
+    }
   }
 
   // Detection of the contacts depending on the configured mode

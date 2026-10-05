@@ -96,8 +96,7 @@ protected:
   /// accelerations are set to zero in the control frame. Allows to ease computations performed in the local frame of
   /// the robot.
   /// @param measRobot The control robot. Used to retrieve the measurements.
-  void inputAdditionalWrench(const mc_rbdyn::Robot & inputRobot,
-                             const mc_rbdyn::Robot & measRobot);
+  void inputAdditionalWrench(const mc_rbdyn::Robot & inputRobot, const mc_rbdyn::Robot & measRobot);
 
   /// @brief Remove the calibrated gravity contribution using a parent pose in the floating-base frame.
   /// @param forceSensor Force sensor whose raw measurement is corrected.
@@ -245,9 +244,7 @@ protected:
 
 public:
   inline Eigen::VectorBlock<Eigen::VectorXd, 6> getEstimatedDisturbanceWrench()
-  {
-    return res_.template segment<6>(observer_.unmodeledWrenchIndex());
-  }
+  { return res_.template segment<6>(observer_.unmodeledWrenchIndex()); }
 
   inline const sva::ForceVecd & getUnbiasedEstimatedDisturbanceWrench() { return unbiasedDisturbanceWrench_; }
 

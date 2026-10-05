@@ -544,9 +544,7 @@ const so::kine::Kinematics MCWaiko::backupFb(boost::circular_buffer<so::kine::Ki
 }
 
 void MCWaiko::setOdometryType(OdometryType newOdometryType)
-{
-  odometryManager_.setOdometryType(newOdometryType);
-}
+{ odometryManager_.setOdometryType(newOdometryType); }
 
 void MCWaiko::addToLogger(const mc_control::MCController & ctl, mc_rtc::Logger & logger, const std::string & category)
 {

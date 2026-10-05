@@ -38,9 +38,8 @@ void MOCAPVisualizer::reset(const mc_control::MCController & ctl)
 
   my_robots_ = mc_rbdyn::Robots::make();
   my_robots_->robotCopy(robot, robot.name());
-  ctl.gui()->addElement(
-      {"Robots"},
-      mc_rtc::gui::Robot("MOCAPVisualizer", [this]() -> const mc_rbdyn::Robot & { return my_robots_->robot(); }));
+  ctl.gui()->addElement({"Robots"}, mc_rtc::gui::Robot("MOCAPVisualizer", [this]() -> const mc_rbdyn::Robot &
+                                                       { return my_robots_->robot(); }));
   /*
 ctl.gui()->addElement({"Robots"},
                     mc_rtc::gui::Robot("Real", [&ctl]() -> const mc_rbdyn::Robot & { return ctl.realRobot(); }));*/
@@ -72,7 +71,10 @@ bool MOCAPVisualizer::run(const mc_control::MCController & ctl)
   {
     mocapTime.erase(mocapTime.find_last_not_of('0') + 2, std::string::npos);
   }
-  else { mocapTime.erase(mocapTime.find_last_not_of('0') + 1, std::string::npos); }
+  else
+  {
+    mocapTime.erase(mocapTime.find_last_not_of('0') + 1, std::string::npos);
+  }
   if(mocapTime.back() == '.') { mocapTime.pop_back(); }
 
   if(!mocapFinished)
@@ -197,8 +199,7 @@ void MOCAPVisualizer::addToLogger(const mc_control::MCController &,
   logger.addLogEntry(category + "_MOCAP_ori",
                      [this]() -> so::Quaternion { return tempMocapData_.kine.orientation.toQuaternion().inverse(); });
   logger.addLogEntry(category + "_mocap_fb_posW", [this]() -> const sva::PTransformd & { return X_0_fb_; });
-  logger.addLogEntry(category + "_mocap_fb_yaw",
-                     [this]() -> const double
+  logger.addLogEntry(category + "_mocap_fb_yaw", [this]() -> const double
                      { return -so::kine::rotationMatrixToYawAxisAgnostic(X_0_fb_.rotation()); });
 }
 
@@ -208,8 +209,7 @@ void MOCAPVisualizer::addContactsLogs(const std::string & name, mc_rtc::Logger &
                      [this, name]() -> so::Vector3 { return contacts_.at(name).worldRefKine_.position(); });
   logger.addLogEntry("MOCAPVisualizer_contacts_" + name + "_orientation",
                      [this, name]() -> so::Quaternion { return contacts_.at(name).quat_; });
-  logger.addLogEntry("MOCAPVisualizer_contacts_" + name + "_orientation_RollPitchYaw",
-                     [this, name]() -> so::Vector3
+  logger.addLogEntry("MOCAPVisualizer_contacts_" + name + "_orientation_RollPitchYaw", [this, name]() -> so::Vector3
                      { return contacts_.at(name).worldRefKine_.orientation.toRollPitchYaw(); });
 }
 

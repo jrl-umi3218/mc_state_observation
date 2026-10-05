@@ -98,37 +98,55 @@ void addToLogger(mc_rtc::Logger & logger,
                      [&kine]() -> const stateObservation::Vector3
                      {
                        if(kine.position.isSet()) { return kine.position(); }
-                       else { return stateObservation::Vector3::Zero(); }
+                       else
+                       {
+                         return stateObservation::Vector3::Zero();
+                       }
                      });
   logger.addLogEntry(prefix + "_ori", source,
                      [&kine]() -> Eigen::Quaterniond
                      {
                        if(kine.orientation.isSet()) { return kine.orientation.inverse().toQuaternion(); }
-                       else { return stateObservation::kine::Orientation::zeroRotation().toQuaternion(); }
+                       else
+                       {
+                         return stateObservation::kine::Orientation::zeroRotation().toQuaternion();
+                       }
                      });
   logger.addLogEntry(prefix + "_linVel", source,
                      [&kine]() -> const stateObservation::Vector3
                      {
                        if(kine.linVel.isSet()) { return kine.linVel(); }
-                       else { return stateObservation::Vector3::Zero(); };
+                       else
+                       {
+                         return stateObservation::Vector3::Zero();
+                       };
                      });
   logger.addLogEntry(prefix + "_angVel", source,
                      [&kine]() -> const stateObservation::Vector3
                      {
                        if(kine.angVel.isSet()) { return kine.angVel(); }
-                       else { return stateObservation::Vector3::Zero(); };
+                       else
+                       {
+                         return stateObservation::Vector3::Zero();
+                       };
                      });
   logger.addLogEntry(prefix + "_linAcc", source,
                      [&kine]() -> const stateObservation::Vector3
                      {
                        if(kine.linAcc.isSet()) { return kine.linAcc(); }
-                       else { return stateObservation::Vector3::Zero(); };
+                       else
+                       {
+                         return stateObservation::Vector3::Zero();
+                       };
                      });
   logger.addLogEntry(prefix + "_angAcc", source,
                      [&kine]() -> const stateObservation::Vector3
                      {
                        if(kine.angAcc.isSet()) { return kine.angAcc(); }
-                       else { return stateObservation::Vector3::Zero(); };
+                       else
+                       {
+                         return stateObservation::Vector3::Zero();
+                       };
                      });
 }
 
@@ -142,37 +160,55 @@ void addToLogger(mc_rtc::Logger & logger,
                      [&kine]() -> const stateObservation::Vector3
                      {
                        if(kine.position.isSet()) { return kine.position(); }
-                       else { return stateObservation::Vector3::Zero(); }
+                       else
+                       {
+                         return stateObservation::Vector3::Zero();
+                       }
                      });
   logger.addLogEntry(prefix + "_ori", source,
                      [&kine]() -> Eigen::Quaterniond
                      {
                        if(kine.orientation.isSet()) { return kine.orientation.inverse().toQuaternion(); }
-                       else { return stateObservation::kine::Orientation::zeroRotation().toQuaternion(); }
+                       else
+                       {
+                         return stateObservation::kine::Orientation::zeroRotation().toQuaternion();
+                       }
                      });
   logger.addLogEntry(prefix + "_linVel", source,
                      [&kine]() -> const stateObservation::Vector3
                      {
                        if(kine.linVel.isSet()) { return kine.linVel(); }
-                       else { return stateObservation::Vector3::Zero(); };
+                       else
+                       {
+                         return stateObservation::Vector3::Zero();
+                       };
                      });
   logger.addLogEntry(prefix + "_angVel", source,
                      [&kine]() -> const stateObservation::Vector3
                      {
                        if(kine.angVel.isSet()) { return kine.angVel(); }
-                       else { return stateObservation::Vector3::Zero(); };
+                       else
+                       {
+                         return stateObservation::Vector3::Zero();
+                       };
                      });
   logger.addLogEntry(prefix + "_linAcc", source,
                      [&kine]() -> const stateObservation::Vector3
                      {
                        if(kine.linAcc.isSet()) { return kine.linAcc(); }
-                       else { return stateObservation::Vector3::Zero(); };
+                       else
+                       {
+                         return stateObservation::Vector3::Zero();
+                       };
                      });
   logger.addLogEntry(prefix + "_angAcc", source,
                      [&kine]() -> const stateObservation::Vector3
                      {
                        if(kine.angAcc.isSet()) { return kine.angAcc(); }
-                       else { return stateObservation::Vector3::Zero(); };
+                       else
+                       {
+                         return stateObservation::Vector3::Zero();
+                       };
                      });
 }
 

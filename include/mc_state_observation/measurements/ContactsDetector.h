@@ -1,8 +1,8 @@
 #pragma once
 #include <mc_control/MCController.h>
 #include <mc_state_observation/measurements/ContactsDetectorConfiguration.h>
-#include <state-observation/tools/measurements-manager/Contact.hpp>
 #include <set>
+#include <state-observation/tools/measurements-manager/Contact.hpp>
 
 namespace mc_state_observation::measurements
 {
