@@ -11,3 +11,8 @@ filterGains:
 contacts:
   contactsDetection: Surfaces
   surfacesForContactDetection: [RightFootCenter, LeftFootCenter]
+  schmittTriggerLowerPropThreshold: 0.1
+  schmittTriggerUpperPropThreshold: 0.12
+
+leggedOdometry:
+  odometryType: 6D
