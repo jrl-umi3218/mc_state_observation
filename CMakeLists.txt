@@ -3,7 +3,7 @@ cmake_minimum_required(VERSION 3.24)
 set(PROJECT_NAME mc_state_observation)
 set(PROJECT_DESCRIPTION "Implementation of state-observation for mc_rtc")
 set(PROJECT_URL "https://github.com/isri-aist/mc_state_observation")
-set(PROJECT_VERSION 1.1.1)
+set(PROJECT_VERSION 1.1.2)
 set(PROJECT_GENERATED_HEADERS_SKIP_DEPRECATED ON)
 set(PROJECT_GENERATED_HEADERS_SKIP_CONFIG ON)
 set(PROJECT_GENERATED_HEADERS_SKIP_WARNING ON)
@@ -43,7 +43,10 @@ set_default_cmake_build_type(RelWithDebInfo)
 
 set(PROJECT_USE_CMAKE_EXPORT TRUE)
 
-project(${PROJECT_NAME} LANGUAGES CXX)
+project(
+  ${PROJECT_NAME}
+  LANGUAGES CXX
+  VERSION ${PROJECT_VERSION})
 
 if(UNIX
    AND NOT APPLE
