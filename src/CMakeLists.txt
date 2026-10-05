@@ -1,9 +1,8 @@
-set(mc_state_observation_SRC conversions/kinematics.cpp
-                             odometry/LeggedOdometryManager.cpp)
+set(mc_state_observation_SRC conversions/kinematics.cpp)
+
 set(mc_state_observation_HDR
-    ${CMAKE_SOURCE_DIR}/include/mc_state_observation/conversions/kinematics.h
-    ${CMAKE_SOURCE_DIR}/include/mc_state_observation/odometry/LeggedOdometryManager.h
-)
+    ${CMAKE_SOURCE_DIR}/include/mc_state_observation/conversions/kinematics.h)
+
 add_library(mc_state_observation SHARED ${mc_state_observation_SRC}
                                         ${mc_state_observation_HDR})
 
@@ -21,12 +20,39 @@ macro(add_simple_observer observer_name)
   # mc_observers doesn't actually depend on mc_control, but the observer's
   # implementation does
   target_link_libraries(${observer_name} PUBLIC mc_rtc::mc_control)
+  # Force installation in non-debug folder
+  if("${CMAKE_BUILD_TYPE}" STREQUAL Debug)
+    install(TARGETS ${observer_name} DESTINATION ${MC_RTC_LIBDIR}/mc_observers)
+  endif()
 endmacro()
 
 macro(add_so_observer observer_name)
   add_simple_observer(${observer_name})
-  target_link_libraries(${observer_name}
-                        PUBLIC state-observation::state-observation)
+  target_link_libraries(
+    ${observer_name} PUBLIC state-observation::state-observation
+                            mc_state_observation)
+endmacro()
+
+macro(add_kineticsobserver)
+  add_observer(
+    MCKineticsObserver "MCKineticsObserver.cpp"
+    "${CMAKE_SOURCE_DIR}/include/${PROJECT_NAME}/MCKineticsObserver.h")
+  # mc_observers doesn't actually depend on mc_control, but the observer's
+  # implementation does
+  target_link_libraries(
+    MCKineticsObserver
+    PUBLIC mc_rtc::mc_control state-observation::state-observation
+           mc_state_observation MCValinor)
+endmacro()
+
+macro(add_valinor)
+  add_observer(MCValinor "MCValinor.cpp"
+               "${CMAKE_SOURCE_DIR}/include/${PROJECT_NAME}/MCValinor.h")
+  # mc_observers doesn't actually depend on mc_control, but the observer's
+  # implementation does
+  target_link_libraries(
+    MCValinor PUBLIC mc_rtc::mc_control state-observation::state-observation
+                     mc_state_observation TiltObserver)
 endmacro()
 
 macro(add_observer_with_filter observer_name)
@@ -39,8 +65,13 @@ macro(add_observer_with_filter observer_name)
 endmacro()
 
 add_so_observer(AttitudeObserver)
+add_so_observer(MCWaiko)
+add_so_observer(TiltObserver)
 
-if(WITH_ROS_OBSERVERS)
+add_kineticsobserver()
+add_valinor()
+
+if(WITH_ROS_OBSERVERS AND NOT BUILD_MCKINETICS_ONLY)
   add_simple_observer(MocapObserver)
   add_simple_observer(MocapObserverROS)
   target_link_libraries(MocapObserverROS PUBLIC MocapObserver)
