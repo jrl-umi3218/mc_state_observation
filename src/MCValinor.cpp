@@ -14,9 +14,7 @@ using OdometryType = stateObservation::odometry::OdometryType;
 
 MCValinor::MCValinor(const std::string & type, double dt, bool asBackup)
 : TiltObserver(type, dt), odometryManager_(), asBackup_(asBackup)
-{
-  odometryManager_.setSamplingTime(dt);
-}
+{ odometryManager_.setSamplingTime(dt); }
 
 void MCValinor::configure(const mc_control::MCController & ctl, const mc_rtc::Configuration & config)
 {
@@ -55,6 +53,13 @@ void MCValinor::configure(const mc_control::MCController & ctl, const mc_rtc::Co
       contactsConfig("surfacesForContactDetection", std::vector<std::string>());
 
   measurements::ContactsDetectorSurfacesConfiguration contactsConf(surfacesForContactDetection);
+
+  if(contactsConfig.has("schmittTriggerLowerPropThreshold") && contactsConfig.has("schmittTriggerUpperPropThreshold"))
+  {
+    double schmittTriggerLowerPropThreshold = contactsConfig("schmittTriggerLowerPropThreshold");
+    double schmittTriggerUpperPropThreshold = contactsConfig("schmittTriggerUpperPropThreshold");
+    contactsConf.schmittTriggerPropThresholds(schmittTriggerLowerPropThreshold, schmittTriggerUpperPropThreshold);
+  }
 
   contactsDetector_.init(ctl, robot_, contactsConf);
 
@@ -274,7 +279,7 @@ bool MCValinor::run(const mc_control::MCController & ctl)
     logger.removeLogEntries(&removedContact);
   };
 
-  std::unordered_set<std::string> & contactList = contactsDetector_.updateContacts(ctl, robot_);
+  std::set<std::string> & contactList = contactsDetector_.updateContacts(ctl, robot_);
   auto contactUpdateFunctions = stateObservation::odometry::LeggedOdometryManager::ContactUpdateFunctions()
                                     .onNewContact(onNewContactOdom)
                                     .onMaintainedContact(onMaintainedContactOdom)
@@ -286,6 +291,11 @@ bool MCValinor::run(const mc_control::MCController & ctl)
   imuAnchorKine_ = odometryManager_.getAnchorKineInBody(true);
   stateObservation::kine::Kinematics imuWorldKine = worldImuKine_.getInverse();
   worldAnchorKine_ = odometryManager_.getAnchorKineIn(imuWorldKine);
+  if(odometryManager_.odometryType_ == OdometryType::None && odometryManager_.maintainedContacts().size() > 0)
+  {
+    stateObservation::kine::Kinematics imuFbKine = fbImuKine_.getInverse();
+    fbAnchorPos_ = odometryManager_.getAnchorKineIn(imuFbKine).position();
+  }
 
   const auto & imu = measRobot.bodySensor(imuSensor_);
 
@@ -444,7 +454,6 @@ void MCValinor::updatePoseAndVel(const mc_control::MCController & ctl)
     if(odometryManager_.maintainedContacts().size() > 0)
     {
       ctlWorldAnchorPos_.setZero();
-      fbAnchorPos_.setZero();
 
       for(auto contact : odometryManager_.maintainedContacts())
       {
@@ -465,8 +474,6 @@ void MCValinor::updatePoseAndVel(const mc_control::MCController & ctl)
         // stateObservation::kine::Kinematics ctlFbContactPos_ = ctlWorldFbKine.getInverse() * ctlWorldContactKine;
 
         ctlWorldAnchorPos_ += ctlWorldContactKine.position() * contact->lambda_;
-        stateObservation::kine::Kinematics imuFbKine = fbImuKine_.getInverse();
-        fbAnchorPos_ = odometryManager_.getAnchorKineIn(imuFbKine).position();
       }
     }
 
@@ -513,9 +520,7 @@ void MCValinor::update(mc_rbdyn::Robot & robot)
 }
 
 void MCValinor::setOdometryType(OdometryType newOdometryType)
-{
-  odometryManager_.setOdometryType(newOdometryType);
-}
+{ odometryManager_.setOdometryType(newOdometryType); }
 
 void MCValinor::addToLogger(const mc_control::MCController & ctl, mc_rtc::Logger & logger, const std::string & category)
 {
@@ -763,9 +768,7 @@ void MCValinor::removeFromLogger(mc_rtc::Logger &, const std::string &) {}
 void MCValinor::addToGUI(const mc_control::MCController &,
                          mc_rtc::gui::StateBuilder &,
                          const std::vector<std::string> &)
-{
-  using namespace mc_state_observation::gui;
-}
+{ using namespace mc_state_observation::gui; }
 
 } // namespace mc_state_observation
 EXPORT_OBSERVER_MODULE("MCValinor", mc_state_observation::MCValinor)

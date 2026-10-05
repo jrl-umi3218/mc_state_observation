@@ -2,6 +2,7 @@
 #include <mc_control/MCController.h>
 #include <mc_state_observation/measurements/ContactsDetectorConfiguration.h>
 #include <state-observation/tools/measurements-manager/Contact.hpp>
+#include <set>
 
 namespace mc_state_observation::measurements
 {
@@ -72,12 +73,15 @@ public:
   /// @param robotName Name of the robot
   /// manager
   /// @return void
-  std::unordered_set<std::string> & updateContacts(const mc_control::MCController & ctl, const std::string & robotName);
+  std::set<std::string> & updateContacts(const mc_control::MCController & ctl, const std::string & robotName);
+
+  /// @brief Clear runtime contact state while preserving the configured detection method and thresholds.
+  inline void reset() { latestContactList_.clear(); }
 
   /// @brief Get the map of all the contacts
   ///
   /// @return std::unordered_map<std::string, contactsWithSensorT>&
-  inline std::unordered_set<std::string> & latestContacts() { return latestContactList_; }
+  inline std::set<std::string> & latestContacts() { return latestContactList_; }
 
   inline ContactsDetection getContactsDetection() const noexcept { return contactsDetectionMethod_; }
 
@@ -121,7 +125,7 @@ private:
                            const ContactsDetectorSolverConfiguration & conf);
 
 protected:
-  std::unordered_set<std::string> latestContactList_;
+  std::set<std::string> latestContactList_;
 
   // method used to detect the contacts
   ContactsDetection contactsDetectionMethod_ = Undefined;
